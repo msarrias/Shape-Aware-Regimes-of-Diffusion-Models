@@ -1,6 +1,6 @@
 ### How Data Representations Change and Evolve in Diffusion Models
 **Goal:** 
-- Use Shape-Aware Graph Distance (SAGD) to quantify how representations change during the reverse process.
+- Use Shape-Aware Graph Distance (SAGD) [[ref](https://github.com/msarrias/SAGD)] to quantify how representations change during the reverse process.
 - Motivation: The speciation time is found by averaging; with SAGD, we account for the data geometry, providing more understanding.
 - Explore if the three dynamical regimes introduced in [[ref](https://www.nature.com/articles/s41467-024-54281-3)] generalize beyond the Ornstein-Uhlenbeck (OU) process. Test it on a DDPM framework.
 
