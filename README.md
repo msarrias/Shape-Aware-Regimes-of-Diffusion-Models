@@ -13,8 +13,8 @@
 #### Ornstein-Uhlenbeck process:
 
  **2D Bimodal Gaussian:**
-- Small d: Reproduce the experiment setting used to generate Fig.1 and use SAGD to see if it allows us to see the speciation stage. If so, move to large values of d.
-- Evaluate the regimes on a 3-class Gaussian dataset with density overlap.
+- Test for asymptotic values of d: Reproduce the experiment setting used to generate Fig.1 and use SAGD to see if it allows us to see the speciation stage. If so, move to large values of d.
+- Hierarchical data: Evaluate the regimes on a 3-class Gaussian dataset with density overlap.
 - _Speciation time and cloning experiment:_ Do the scores define the fate of the data trajectory? Explore the role of the noise in relation to the class barrier.
 
 #### DDPM:
