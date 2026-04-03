@@ -6,7 +6,7 @@
 
 **Approach:** 
 - For a subset of time steps $t$, build a graph of the data where nodes are the samples, generated at time $t$, and the edges are the  local connections between them assigned using the $k$-nearest neighbors algorithm.
-- Use SASNE [[ref](https://link.springer.com/article/10.1186/s12859-022-05028-8)] to embed the SAGD matrix representation and project into a lower-dimensional space.
+- Use SASNE [[ref](https://link.springer.com/article/10.1186/s12859-022-05028-8)] to embed the networks into a lower-dimensional space.
 
 ### Test case:
 
