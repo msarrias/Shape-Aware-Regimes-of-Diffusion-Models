@@ -1,12 +1,11 @@
 ### How Data Representations Change and Evolve in Diffusion Models
 **Goal:** 
-- Use Shape-Aware Graph Distance (SAGD) [[1](https://github.com/msarrias/SAGD)] to quantify how representations change during the reverse process.
-- Motivation: The speciation time is found by averaging; with SAGD, we account for the data geometry, providing more understanding.
+- Use Shape-Aware Graph Distance (SAGD) [[1](https://github.com/msarrias/SAGD)] to quantify how representations change during the reverse process and see if it allows for detecting the three regimes introduced in [[1](https://www.nature.com/articles/s41467-024-54281-3)]. The motivation would be that the speciation time is found by averaging; with SAGD, we account for the data geometry, providing more understanding.
 - Explore if the three dynamical regimes introduced in [[1](https://www.nature.com/articles/s41467-024-54281-3)] generalize beyond the Ornstein-Uhlenbeck (OU) process. Test it on a DDPM framework.
 
 **Approach:** 
-- For a subset of time steps $t$, build a graph of the data where nodes are the samples, generated at time $t$, and the edges are the  local connections between them assigned using the $k$-nearest neighbors algorithm.
-- Use SASNE [[1](https://link.springer.com/article/10.1186/s12859-022-05028-8),[2](https://github.com/tobiaswangberg/SASNE)] to embed the networks into a lower-dimensional space.
+- For a subset of time steps $t$, build a single-component graph of the data where nodes are the samples, generated at time $t$, and the edges are the local connections between them assigned using the $k$-nearest neighbors algorithm.
+- Use SASNE [[1](https://link.springer.com/article/10.1186/s12859-022-05028-8),[2](https://github.com/tobiaswangberg/SASNE)] to embed the distance matrix into a lower-dimensional space (3D).
 
 ### Test case:
 
