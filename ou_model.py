@@ -60,3 +60,29 @@ def classify(x, mu_star):
     m = torch.matmul(mu_star, x) 
     return torch.sign(m)
     
+
+import numpy as np
+import torch
+
+def theoretical_ts(mu_star, std, times):
+    """
+    computes the theoretical speciation time t_s and finds its index in the times array.
+    :param mu_star: The cluster center vector.
+    :param std: The standard deviation (internal variance) of the clusters.
+    :param times: The array of time steps used in the simulation.
+    """
+    if torch.is_tensor(mu_star):
+        mu_star_np = mu_star.detach().cpu().numpy()
+    else:
+        mu_star_np = mu_star
+    # Total variance of the mixture at t=0
+    # Lambda = ||mu||^2 + sigma^2
+    norm_sq = np.linalg.norm(mu_star_np)**2
+    Lambda = norm_sq + (std**2)
+    # t_s = 1/2 * ln(Lambda)
+    # This is the point where the Hessian of the log-density crosses zero
+    t_s = np.log(Lambda) / 2.0
+    t_s_idx = np.abs(times - t_s).argmin()
+    
+    return t_s, t_s_idx
+    
