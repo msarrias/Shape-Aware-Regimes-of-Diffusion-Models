@@ -15,38 +15,37 @@ from adaptive_knn import AdaptiveKNNGraph # comes from graph-theory repo
 from pathlib import Path
 
 if __name__ == "__main__":
-    DEVICE = 'cpu'
-    torch.manual_seed(232)
-    np.random.seed(232)
+    torch.manual_seed(123)
     
-    ds = [2, 256, 1024, 4096, 16384]
+    ds = [2] #, 256, 1024, 4096, 16384]
     T = 10
     nsteps = 1000
     nsamples = 1000
     dt = T / nsteps
     times = np.arange(0, T, dt)
-    time_indices = list(range(0, len(times), 10)) 
     
     for d in ds:
-        mu_star, std = torch.ones(d, device=DEVICE), 1
+        mu_star = torch.ones(d) * 4
+        std = 1.0
         t_s, ts_idx = theoretical_ts(mu_star, std, times)
-        time_indices = sorted(list(set(time_indices + [ts_idx, len(times) - 1, 0])))
+        time_indices = sorted(list(set(list(range(0, len(times), 10)) + [ts_idx, len(times) - 1])), reverse=True)
         path = Path(f"data/D{d}_N1000_100ts/")
         path.mkdir(parents=True, exist_ok=True)
         history_file = path / f"D{d}_N1000.jbl"
         
+        #  SDE Simulation
         if not history_file.exists():
-            
-            # sample for T
-            x_current = torch.randn(d, nsamples) 
             history = {}
-            # SDE Simulation
+            #  sample for T
+            x_current = torch.randn(d, nsamples) 
+            history[T] = x_current.T.clone().numpy() 
+            #  T-1 --> 0
             for step in tqdm(reversed(range(nsteps)), total=nsteps, desc=f"SDE D={d}"):
                 t = times[step]
+                x_current, _ = backward(x_current, t, dt, mu_star, std)
                 if step in time_indices:
                     history[t] = x_current.T.clone().numpy() 
-                x_current, _ = backward(x_current, t, dt, mu_star, std)
-            # history = np.array(history)
+    
             time_snaps = list(history.keys())
             data_to_dump = {
                 "history": history,
@@ -61,24 +60,24 @@ if __name__ == "__main__":
                     "std": std,
                     "ts": t_s,
                     "ts_idx":ts_idx
+                    }
                 }
-            }
             joblib.dump(data_to_dump, history_file, compress=3)
         else:
             print(f"[D={d}] History found. Loading...")
             history = joblib.load(history_file)["history"]
+            time_snaps = list(history.keys())
 
+        # Graph Construction
         ws_file = path / f"D{d}_N1000_Ws.jbl"
         if not ws_file.exists():
-            # Graph Construction
-            W_results = []
-            k_results = []
-            for _, graph in tqdm(history.items(), desc="KNN Progress"):
-                model = AdaptiveKNNGraph(graph)
-                W = model.compute_W()
+            W_results, k_results = [], []
+            for t, graph in tqdm(history.items(), desc="KNN Progress"):
+                knn_obj = AdaptiveKNNGraph(graph)
+                W = knn_obj.compute_W()
                 W_results.append(W)
-                k_results.append(model.k)
-            time_snaps = list(history.keys())
+                k_results.append(knn_obj.k)
+            
             joblib.dump({"Ws": W_results, "ks": k_results, 'ts': time_snaps}, ws_file, compress=3)
         else:
             print(f"[D={d}] Weights found. Loading...")
@@ -86,9 +85,9 @@ if __name__ == "__main__":
             W_results = load_file["Ws"]
             time_snaps = load_file['ts']
 
+        # CTD Calculation
         ctd_file = path / f"D{d}_N1000_CTDs.jbl"
         if not ctd_file.exists():
-            # CTD Calculation
             ctds_dict = {}
             laplacian_type = "unnormalized"
             norm_type = "norm_wrt_avg_ctd"
@@ -109,7 +108,7 @@ if __name__ == "__main__":
                 "params": {
                     "laplacian_type": laplacian_type,
                     "norm_type": norm_type,
-                    "ts": list(ctds_dict.keys())
+                    "ts": time_snaps
                 }
             }
             joblib.dump(ctd_dump, ctd_file, compress=3)
@@ -120,7 +119,7 @@ if __name__ == "__main__":
         # SAGD Distance Matrix
         sagd_file = path / f"D{d}_N1000_SAGD.jbl"
         if not sagd_file.exists():
-            norm_ctds_list = [dict_['norm_ctds'] for k, dict_ in ctds_dict.items()]
+            norm_ctds_list = [t_ctds_dict['norm_ctds'] for t, t_ctds_dict in ctds_dict.items()]
             num_graphs = len(norm_ctds_list)
             sagd_dist_matrix = np.zeros((num_graphs, num_graphs))
             
