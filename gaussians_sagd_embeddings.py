@@ -37,9 +37,10 @@ if __name__ == "__main__":
         if not history_file.exists():
             history = {}
             #  sample for T
-            x_current = torch.randn(d, nsamples) 
-            history[T] = x_current.T.clone().numpy() 
+            x_current = torch.randn(d, nsamples)  # d x N
+            history[T] = x_current.T.clone().numpy()  # N x d
             #  T-1 --> 0
+            
             for step in tqdm(reversed(range(nsteps)), total=nsteps, desc=f"SDE D={d}"):
                 t = times[step]
                 x_current, _ = backward(x_current, t, dt, mu_star, std)
@@ -62,6 +63,7 @@ if __name__ == "__main__":
                     "ts_idx":ts_idx
                     }
                 }
+            
             joblib.dump(data_to_dump, history_file, compress=3)
         else:
             print(f"[D={d}] History found. Loading...")
@@ -70,8 +72,10 @@ if __name__ == "__main__":
 
         # Graph Construction
         ws_file = path / f"D{d}_N1000_Ws.jbl"
+        
         if not ws_file.exists():
             W_results, k_results = [], []
+            
             for t, graph in tqdm(history.items(), desc="KNN Progress"):
                 knn_obj = AdaptiveKNNGraph(graph)
                 W = knn_obj.compute_W()
@@ -111,6 +115,7 @@ if __name__ == "__main__":
                     "ts": time_snaps
                 }
             }
+            
             joblib.dump(ctd_dump, ctd_file, compress=3)
         else:
             print(f"[D={d}] CTDs found. Loading...")
@@ -118,6 +123,7 @@ if __name__ == "__main__":
     
         # SAGD Distance Matrix
         sagd_file = path / f"D{d}_N1000_SAGD.jbl"
+        
         if not sagd_file.exists():
             norm_ctds_list = [t_ctds_dict['norm_ctds'] for t, t_ctds_dict in ctds_dict.items()]
             num_graphs = len(norm_ctds_list)
