@@ -17,7 +17,7 @@ from pathlib import Path
 if __name__ == "__main__":
     torch.manual_seed(123)
     
-    ds = [2] #, 256, 1024, 4096, 16384]
+    ds = [2, 256, 1024, 4096, 16384]
     T = 10
     nsteps = 1000
     nsamples = 1000
