@@ -1,5 +1,5 @@
-import matplotlib.pyplot as plt
 # Gemini did this for me. Thank you Gemini
+import matplotlib.pyplot as plt
 from matplotlib import rc
 from matplotlib.animation import FuncAnimation
 import numpy as np
