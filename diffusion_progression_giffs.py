@@ -11,7 +11,7 @@ from scipy.spatial.distance import pdist, squareform
 from ou_model import theoretical_ts
 from SASNE import SASNE
 from RRP import RRP
-
+from adaptive_knn import AdaptiveKNNGraph
 
 def create_animated_embedding(embedding, d, ts_idx, time_snaps, save_path):
     n_frames = len(embedding)
@@ -110,7 +110,8 @@ if __name__ == "__main__":
         t_s, ts_idx = theoretical_ts(mu_star, std, times)
         ts_idx = np.argmin(np.abs(time_snaps - t_s))
         SAGD_dist_matrix = joblib.load(f"data/D{d}_N1000_100ts/D{d}_N1000_SAGD.jbl")
-        embedding, Z = SASNE(SAGD_dist_matrix)
+        SAGD_weights = AdaptiveKNNGraph(SAGD_dist_matrix).compute_W()
+        embedding, Z = SASNE(SAGD_weights)
         D1 = squareform(pdist(embedding)) 
         D2 = squareform(pdist(Z)) 
         sasne_embeddings_list.append((embedding, Z, D1, D2, ts_idx))
