@@ -17,7 +17,7 @@ from adaptive_knn import AdaptiveKNNGraph # comes from graph-theory repo
 from pathlib import Path
 
 
-def calculate_ctds(W_result, laplacian_type, norm_type):
+def ctd_job(W_result, laplacian_type, norm_type):
     C_Gi = CTD_matrix(W=W_result, laplacian_type=laplacian_type)
     triu_i = C_Gi[np.triu_indices(W_result.shape[0], k=1)]
     
@@ -27,6 +27,12 @@ def calculate_ctds(W_result, laplacian_type, norm_type):
         Vol=np.sum(W_result)
     )
     return {'ctds': triu_i, 'norm_ctds': norm_i}
+
+
+def knn_job(dist: np.ndarray):
+    knn_obj = AdaptiveKNNGraph(dist)
+    W = knn_obj.compute_W()
+    return knn_obj.k, W
 
 
 if __name__ == "__main__":
@@ -93,14 +99,14 @@ if __name__ == "__main__":
         if not ws_file.exists():
             W_results, k_results = [], []
 
-            knn_objects = Parallel(n_jobs=nthreads)(
-                delayed(AdaptiveKNNGraph)(history[t]) for t in tqdm(time_snaps, desc="KNN Progress")
+            knn_results = Parallel(n_jobs=nthreads)(
+                delayed(knn_job)(history[t]) for t in tqdm(time_snaps, desc="KNN Progress")
             )
             
-            for t, knn_obj in zip(time_snaps, knn_objects):
-                W = knn_obj.compute_W()
+            for t, knn_obj in zip(time_snaps, knn_results):
+                k, W = knn_obj
                 W_results.append(W)
-                k_results.append(knn_obj.k)
+                k_results.append(k)
             
             joblib.dump({"Ws": W_results, "ks": k_results, 'ts': time_snaps}, ws_file, compress=3)
         else:
@@ -117,7 +123,7 @@ if __name__ == "__main__":
             norm_type = "norm_wrt_avg_ctd"
 
             ctds = Parallel(n_jobs=nthreads)(
-                delayed(calculate_ctds)(W_i, laplacian_type, norm_type)
+                delayed(ctd_job)(W_i, laplacian_type, norm_type)
                 for W_i in tqdm(W_results, total=len(W_results), desc="CTD Logic")
             )
             ctds_dict = {t: ctd for t, ctd in zip(time_snaps, ctds)}
