@@ -9,7 +9,9 @@ from distance_matrix import construct_sagd_distance_matrix
 
 
 from distances import CTD_matrix
+from numpy import isclose
 from stats import normalize, Kruglov_distance
+from scipy.stats import wasserstein_distance
 from SAGD import SAGD
 from adaptive_knn import AdaptiveKNNGraph # comes from graph-theory repo
 from pathlib import Path
@@ -131,8 +133,15 @@ if __name__ == "__main__":
             num_graphs = len(norm_ctds_list)
             pairs = [(i, j) for i in range(num_graphs) for j in range(i + 1, num_graphs)]
 
+            testsize = max(10, num_graphs)
+            for i in range(testsize):
+                for j in range(testsize):
+                    kruglov_dist = Kruglov_distance(norm_ctds_list[i], norm_ctds_list[j])
+                    wasserstein_dist = wasserstein_distance(norm_ctds_list[i], norm_ctds_list[j]) 
+                    assert isclose(kruglov_dist, wasserstein_dist)
+
             distances = Parallel(n_jobs=nthreads)(
-                delayed(Kruglov_distance)(norm_ctds_list[i], norm_ctds_list[j])
+                delayed(wasserstein_distance)(norm_ctds_list[i], norm_ctds_list[j])
                 for i, j in tqdm(pairs, desc="Computing SAGD Matrix")
             )
 
