@@ -23,6 +23,8 @@ if __name__ == "__main__":
     nsamples = 1000
     dt = T / nsteps
     times = np.arange(0, T, dt)
+
+    nthreads = 16
     
     for d in ds:
         mu_star = torch.ones(d) * 4
@@ -127,15 +129,17 @@ if __name__ == "__main__":
         if not sagd_file.exists():
             norm_ctds_list = [t_ctds_dict['norm_ctds'] for t, t_ctds_dict in ctds_dict.items()]
             num_graphs = len(norm_ctds_list)
+            pairs = [(i, j) for i in range(num_graphs) for j in range(i + 1, num_graphs)]
+
+            distances = Parallel(n_jobs=nthreads)(
+                delayed(Kruglov_distance)(norm_ctds_list[i], norm_ctds_list[j])
+                for i, j in tqdm(pairs, desc="Computing SAGD Matrix")
+            )
+
             sagd_dist_matrix = np.zeros((num_graphs, num_graphs))
-            
-            for i in tqdm(range(num_graphs), desc="Computing SAGD Matrix"):
-                norm_i = norm_ctds_list[i]
-                for j in range(i + 1, num_graphs):
-                    norm_j = norm_ctds_list[j]
-                    dist = Kruglov_distance(vi=norm_i, vj=norm_j)
-                    sagd_dist_matrix[i, j] = dist
-                    sagd_dist_matrix[j, i] = dist 
+            for (i, j), dist in zip(pairs, distances):
+                sagd_dist_matrix[i, j] = dist
+                sagd_dist_matrix[j, i] = dist
                     
             joblib.dump(sagd_dist_matrix, sagd_file, compress=3)
             
