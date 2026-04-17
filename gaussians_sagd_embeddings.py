@@ -30,7 +30,7 @@ def ctd_job(W_result, laplacian_type, norm_type):
 
 
 def knn_job(dist: np.ndarray):
-    knn_obj = AdaptiveKNNGraph(dist)
+    knn_obj = AdaptiveKNNGraph(dist, inject_edges=True, kernel='gaussian')
     W = knn_obj.compute_W()
     return knn_obj.k, W
 
