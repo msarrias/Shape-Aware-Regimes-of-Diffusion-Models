@@ -13,4 +13,4 @@ dependencies = [
 ]
 
 [tool.setuptools]
-py-modules = ["SASNE", "construct_graph", "graph_distance", "RRP"]
+py-modules = ["SASNE", "adaptive_knn", "graph_distance", "RRP"]
