@@ -1,0 +1,16 @@
+[build-system]
+requires = ["setuptools", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "sasne"
+version = "0.1.0"
+dependencies = [
+    "numpy",
+    "scikit-learn",
+    "networkx",
+    "scipy"
+]
+
+[tool.setuptools]
+py-modules = ["SASNE", "construct_graph", "graph_distance", "RRP"]
