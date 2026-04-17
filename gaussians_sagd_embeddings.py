@@ -9,10 +9,31 @@ from distance_matrix import construct_sagd_distance_matrix
 
 
 from distances import CTD_matrix
+from numpy import isclose
 from stats import normalize, Kruglov_distance
+from scipy.stats import wasserstein_distance
 from SAGD import SAGD
 from adaptive_knn import AdaptiveKNNGraph # comes from graph-theory repo
 from pathlib import Path
+
+
+def ctd_job(W_result, laplacian_type, norm_type):
+    C_Gi = CTD_matrix(W=W_result, laplacian_type=laplacian_type)
+    triu_i = C_Gi[np.triu_indices(W_result.shape[0], k=1)]
+    
+    norm_i = normalize(
+        list_values=triu_i,
+        norm_type=norm_type,
+        Vol=np.sum(W_result)
+    )
+    return {'ctds': triu_i, 'norm_ctds': norm_i}
+
+
+def knn_job(dist: np.ndarray):
+    knn_obj = AdaptiveKNNGraph(dist)
+    W = knn_obj.compute_W()
+    return knn_obj.k, W
+
 
 if __name__ == "__main__":
     torch.manual_seed(123)
@@ -23,6 +44,8 @@ if __name__ == "__main__":
     nsamples = 1000
     dt = T / nsteps
     times = np.arange(0, T, dt)
+
+    nthreads = 16
     
     for d in ds:
         mu_star = torch.ones(d) * 4
@@ -75,12 +98,15 @@ if __name__ == "__main__":
         
         if not ws_file.exists():
             W_results, k_results = [], []
+
+            knn_results = Parallel(n_jobs=nthreads)(
+                delayed(knn_job)(history[t]) for t in tqdm(time_snaps, desc="KNN Progress")
+            )
             
-            for t, graph in tqdm(history.items(), desc="KNN Progress"):
-                knn_obj = AdaptiveKNNGraph(graph)
-                W = knn_obj.compute_W()
+            for t, knn_obj in zip(time_snaps, knn_results):
+                k, W = knn_obj
                 W_results.append(W)
-                k_results.append(knn_obj.k)
+                k_results.append(k)
             
             joblib.dump({"Ws": W_results, "ks": k_results, 'ts': time_snaps}, ws_file, compress=3)
         else:
@@ -95,18 +121,12 @@ if __name__ == "__main__":
             ctds_dict = {}
             laplacian_type = "unnormalized"
             norm_type = "norm_wrt_avg_ctd"
-            
-            for W_i, t in tqdm(zip(W_results, time_snaps), total=len(time_snaps), desc="CTD Logic"):
-                C_Gi = CTD_matrix(W=W_i, laplacian_type=laplacian_type)
-                triu_i = C_Gi[np.triu_indices(W_i.shape[0], k=1)]
-                
-                norm_i = normalize(
-                    list_values=triu_i,
-                    norm_type=norm_type,
-                    Vol=np.sum(W_i)
-                )
-                ctds_dict[t] = {'ctds': triu_i, 'norm_ctds': norm_i}
-    
+
+            ctds = Parallel(n_jobs=nthreads)(
+                delayed(ctd_job)(W_i, laplacian_type, norm_type)
+                for W_i in tqdm(W_results, total=len(W_results), desc="CTD Logic")
+            )
+            ctds_dict = {t: ctd for t, ctd in zip(time_snaps, ctds)}
             ctd_dump = {
                 "CTDs": ctds_dict,
                 "params": {
@@ -127,15 +147,24 @@ if __name__ == "__main__":
         if not sagd_file.exists():
             norm_ctds_list = [t_ctds_dict['norm_ctds'] for t, t_ctds_dict in ctds_dict.items()]
             num_graphs = len(norm_ctds_list)
+            pairs = [(i, j) for i in range(num_graphs) for j in range(i + 1, num_graphs)]
+
+            testsize = min(3, num_graphs)
+            for i in range(testsize):
+                for j in range(testsize):
+                    kruglov_dist = Kruglov_distance(norm_ctds_list[i], norm_ctds_list[j])
+                    wasserstein_dist = wasserstein_distance(norm_ctds_list[i], norm_ctds_list[j]) 
+                    assert isclose(kruglov_dist, wasserstein_dist)
+
+            distances = Parallel(n_jobs=nthreads)(
+                delayed(wasserstein_distance)(norm_ctds_list[i], norm_ctds_list[j])
+                for i, j in tqdm(pairs, desc="Computing SAGD Matrix")
+            )
+
             sagd_dist_matrix = np.zeros((num_graphs, num_graphs))
-            
-            for i in tqdm(range(num_graphs), desc="Computing SAGD Matrix"):
-                norm_i = norm_ctds_list[i]
-                for j in range(i + 1, num_graphs):
-                    norm_j = norm_ctds_list[j]
-                    dist = Kruglov_distance(vi=norm_i, vj=norm_j)
-                    sagd_dist_matrix[i, j] = dist
-                    sagd_dist_matrix[j, i] = dist 
+            for (i, j), dist in zip(pairs, distances):
+                sagd_dist_matrix[i, j] = dist
+                sagd_dist_matrix[j, i] = dist
                     
             joblib.dump(sagd_dist_matrix, sagd_file, compress=3)
             
