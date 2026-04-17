@@ -1,6 +1,5 @@
 import numpy as np
 from sklearn.manifold import TSNE
-from construct_graph import construct_graph
 from graph_distance import get_symbiharmonic_coords
 import time
 from adaptive_knn import AdaptiveKNNGraph
