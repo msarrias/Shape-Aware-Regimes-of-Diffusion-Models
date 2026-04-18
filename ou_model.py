@@ -22,10 +22,10 @@ def backward(x_t, t, dt, mu_star, std, epsilon=None):
     Moves the Ornstein-Uhlenbeck process one step backward in time (t -> t-dt).
     This implements the discrete version of:
     -dy_i(t) = [y_i + 2 * Score_i] dt + sqrt(2) * dB_t
-    Which is discretize as:
+    Which is discretized as:
     x_{t-dt} = x_t + [x_t + 2 * Score(x_t, t)] * dt + sqrt(2 * dt) * epsilon
     """
-    if epsilon == None:                                # For reproducibility
+    if epsilon is None:                                # For reproducibility
         epsilon = torch.randn_like(x_t)                # N(0,1)
     f = -x_t - 2*score(x_t, t, mu_star, std)           # Drift term
     dW_t = np.sqrt(2*dt)*epsilon                       # N(0, dt)
@@ -35,7 +35,7 @@ def backward(x_t, t, dt, mu_star, std, epsilon=None):
 
 def score(x_t, t, mu_star, std):
     """
-    Score function of a 2D - 2modes multivariate Gaussian
+    Score function of 2D, bimodal multivariate Gaussian
     x_t: Current particle positions. Shape (batch_size, d).
     t: Current diffusion time.
     mu_star: symmetric stationary mean. Shape (d,).
@@ -52,21 +52,18 @@ def score(x_t, t, mu_star, std):
 
 def classify(x, mu_star):
     """
-    Predicts which of the two classes of the MV Gaussian a particle belongs to.
+    Predicts which of the classes a particle belongs to.
     It projects the particle onto the axis defined by the class centers.
     """
     # m = np.dot(mu_star, x)
     # return np.sign(m)
     m = torch.matmul(mu_star, x) 
     return torch.sign(m)
-    
 
-import numpy as np
-import torch
 
 def theoretical_ts(mu_star, std, times):
     """
-    computes the theoretical speciation time t_s and finds its index in the times array.
+    computes the theoretical speciation time t_s and finds its index in the time array.
     :param mu_star: The cluster center vector.
     :param std: The standard deviation (internal variance) of the clusters.
     :param times: The array of time steps used in the simulation.
