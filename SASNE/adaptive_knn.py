@@ -3,13 +3,14 @@ import numpy as np
 
 
 class AdaptiveKNNGraph:
-    def __init__(self, data: np.ndarray, min_k: int = 5, inject_edges=False, perc=0.02, kernel='inverse_sq_euclidean_d'):
+    def __init__(self, data: np.ndarray, min_k: int = 5, inject_edges=False, perc=0.02,
+                 kernel='inverse_sq_euclidean_d'):
         self.data = data
         self.min_k = min_k
         self.dist_matrix = squareform(pdist(data, metric='euclidean'))
         self.n_samples = len(self.dist_matrix)
         self.inject_edges = inject_edges
-        self.kernel=kernel
+        self.kernel = kernel
         if self.inject_edges:
             self.true_dist_matrix = self.dist_matrix.copy()
             self.perc = perc
@@ -19,18 +20,17 @@ class AdaptiveKNNGraph:
         self.sorted_ind = np.argsort(self.dist_matrix, axis=0)
         self.k = None
         self.sigma = None
-        
 
     def inject_random_edges(
-        self
+            self
     ):
         num_nodes = int(self.n_samples * self.perc)
         pairs = np.random.permutation(self.n_samples)[:num_nodes].reshape(-1, 2)
-        
+
         for vi, vj in pairs:
             self.dist_matrix[vi, vj] = 0.0
             self.dist_matrix[vj, vi] = 0.0
-        
+
     def _depth_first_search(
             self,
             v: int,
@@ -163,14 +163,14 @@ class AdaptiveKNNGraph:
         for a subset of points (used in recursion)
         """
         is_top_level = dist_matrix is None
-        
+
         D = dist_matrix if dist_matrix is not None else self.dist_matrix
         k = self.find_smallest_k(dist_subset=D)
-        
+
         # Save k only if we are at the top level
         if is_top_level:
             self.k = k
-            
+
         adj = self.get_adjacency(k=k, dist_subset=D)
 
         # If we had to go above min_k, try to optimize the sub-islands
@@ -189,21 +189,20 @@ class AdaptiveKNNGraph:
         return adj
 
     def gaussian_kernel(self):
-        knn_distances = self.true_dist_matrix[np.arange(self.n_samples), self.sorted_ind[self.k-1]]
+        knn_distances = self.true_dist_matrix[np.arange(self.n_samples), self.sorted_ind[self.k - 1]]
         self.sigma = np.median(knn_distances)
         dist_sq = self.true_dist_matrix ** 2
-        return np.exp(-dist_sq / (2 * (self.sigma**2)))
+        return np.exp(-dist_sq / (2 * (self.sigma ** 2)))
 
     def inverse_sq_euclidean_kernel(self):
         return 1.0 / (1.0 + self.true_dist_matrix ** 2)
-    
+
     def compute_W(self):
         A = self.build_refined_adj()
-        
+
         if self.kernel == 'gaussian':
             kernel_matrix = self.gaussian_kernel()
         elif self.kernel == 'inverse_sq_euclidean_d':
             kernel_matrix = self.inverse_sq_euclidean_kernel()
-        W = np.where(A > 0, kernel_matrix, 0.0)
+        W = np.where(A > 0, np.maximum(kernel_matrix, 1e-12), 0.0)
         return W
-        
