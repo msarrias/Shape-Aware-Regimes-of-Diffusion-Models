@@ -17,22 +17,34 @@ from adaptive_knn import AdaptiveKNNGraph # comes from graph-theory repo
 from pathlib import Path
 
 
-def ctd_job(W_result, laplacian_type, norm_type):
-    C_Gi = CTD_matrix(W=W_result, laplacian_type=laplacian_type)
+def ctd_job(
+        W_result: np.ndarray,
+        laplacian: str,
+        normalization: str
+):
+    C_Gi = CTD_matrix(W=W_result, laplacian_type=laplacian)
     triu_i = C_Gi[np.triu_indices(W_result.shape[0], k=1)]
     
     norm_i = normalize(
         list_values=triu_i,
-        norm_type=norm_type,
+        norm_type=normalization,
         Vol=np.sum(W_result)
     )
     return {'ctds': triu_i, 'norm_ctds': norm_i}
 
 
-def knn_job(dist: np.ndarray):
-    knn_obj = AdaptiveKNNGraph(dist)
-    W = knn_obj.compute_W()
-    return knn_obj.k, W
+def knn_job(
+        data: np.ndarray,
+        inject_edges: bool,
+        kernel: str
+):
+    knn_objt = AdaptiveKNNGraph(
+        data=data,
+        inject_edges=inject_edges,
+        kernel=kernel
+    )
+    W_matrix = knn_objt.compute_W()
+    return knn_obj.k, W_matrix
 
 
 if __name__ == "__main__":
@@ -51,7 +63,10 @@ if __name__ == "__main__":
         mu_star = torch.ones(d) * 4
         std = 1.0
         t_s, ts_idx = theoretical_ts(mu_star, std, times)
-        time_indices = sorted(list(set(list(range(0, len(times), 10)) + [ts_idx, len(times) - 1])), reverse=True)
+        time_indices = sorted(
+            list(set(list(range(0, len(times), 10)) + [ts_idx, len(times) - 1])),
+            reverse=True
+        )
         path = Path(f"data/D{d}_N1000_100ts/")
         path.mkdir(parents=True, exist_ok=True)
         history_file = path / f"D{d}_N1000.jbl"
@@ -98,9 +113,13 @@ if __name__ == "__main__":
         
         if not ws_file.exists():
             W_results, k_results = [], []
+            inject_edges_bool = True
+            kernel_choice = "gaussian"
 
             knn_results = Parallel(n_jobs=nthreads)(
-                delayed(knn_job)(history[t]) for t in tqdm(time_snaps, desc="KNN Progress")
+                delayed(knn_job)(
+                    history[t], inject_edges_bool, kernel_choice)
+                for t in tqdm(time_snaps, desc="KNN Progress")
             )
             
             for t, knn_obj in zip(time_snaps, knn_results):
@@ -118,7 +137,6 @@ if __name__ == "__main__":
         # CTD Calculation
         ctd_file = path / f"D{d}_N1000_CTDs.jbl"
         if not ctd_file.exists():
-            ctds_dict = {}
             laplacian_type = "unnormalized"
             norm_type = "norm_wrt_avg_ctd"
 
