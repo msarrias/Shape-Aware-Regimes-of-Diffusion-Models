@@ -4,7 +4,7 @@ import torch
 from joblib import Parallel, delayed
 from tqdm import tqdm
 from ou_model import backward, theoretical_ts
-
+import sys
 
 from distances import CTD_matrix
 from numpy import isclose
@@ -50,6 +50,7 @@ def knn_job(
 
 
 if __name__ == "__main__":
+    sys.setrecursionlimit(2000)
     torch.manual_seed(9009)
     ds = [2, 50, 256, 1024, 4096, 16384]
     T = 10
@@ -58,7 +59,7 @@ if __name__ == "__main__":
     dt = T / n_steps
     times = np.arange(0, T, dt)
 
-    n_threads = 10
+    n_threads = 5
     
     for d in ds:
         mu_star = torch.ones(d) * 4
@@ -117,7 +118,7 @@ if __name__ == "__main__":
             inject_edges_bool = True
             kernel_choice = "gaussian"
 
-            knn_results = Parallel(n_jobs=n_threads)(
+            knn_results = Parallel(n_jobs=n_threads, backend="threading")(
                 delayed(knn_job)(
                     history[t], inject_edges_bool, kernel_choice)
                 for t in tqdm(time_snaps, desc="KNN Progress")
