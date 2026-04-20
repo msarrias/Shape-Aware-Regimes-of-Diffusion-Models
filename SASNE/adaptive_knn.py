@@ -3,8 +3,14 @@ import numpy as np
 
 
 class AdaptiveKNNGraph:
-    def __init__(self, data: np.ndarray, min_k: int = 5, inject_edges=False, perc=0.02,
-                 kernel='inverse_sq_euclidean_d'):
+    def __init__(
+            self,
+            data: np.ndarray,
+            min_k: int = 5,
+            inject_edges=True,
+            perc=0.02,
+            kernel='gaussian'
+    ):
         self.data = data
         self.min_k = min_k
         self.dist_matrix = squareform(pdist(data, metric='euclidean'))
@@ -199,10 +205,9 @@ class AdaptiveKNNGraph:
 
     def compute_W(self):
         A = self.build_refined_adj()
-
         if self.kernel == 'gaussian':
             kernel_matrix = self.gaussian_kernel()
         elif self.kernel == 'inverse_sq_euclidean_d':
             kernel_matrix = self.inverse_sq_euclidean_kernel()
-        W = np.where(A > 0, np.maximum(kernel_matrix, 1e-12), 0.0)
+        W = np.where(A > 0, np.maximum(kernel_matrix, 1e-6), 0.0)
         return W
