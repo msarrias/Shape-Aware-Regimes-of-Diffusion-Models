@@ -469,6 +469,7 @@ def plot_full_sasne_dashboard(
         # result structure: (embedding, Z, D1, D2, W, ts_idx, ts_val)
         # Note: adjust the unpacking if your 'result' tuple order is different
         SAGD_dist_matrix, embedding, Z, D1, D2, time_snaps, ts_idx, t_s = result
+        cbar = True if i == len(sasne_results) - 1 else False
 
         # --- ROW 1: SASNE Projection ---
         ax_proj = axes[0, i]
@@ -493,7 +494,7 @@ def plot_full_sasne_dashboard(
 
         # --- ROW 3: SAGD Distance Heatmap ---
         ax_heat = axes[2, i]
-        sns.heatmap(SAGD_dist_matrix, cmap='viridis', robust=True, ax=ax_heat, cbar_kws={'shrink': 0.8})
+        sns.heatmap(SAGD_dist_matrix, cmap='viridis', robust=True, ax=ax_heat, cbar=cbar, cbar_kws={'shrink': 0.8})
 
         # Add the Speciation Lines
         ax_heat.axvline(x=ts_idx + 0.5, color='red', linestyle='--', alpha=0.8, label=f'$t_s={round(t_s,2):.2f}$')
@@ -504,15 +505,11 @@ def plot_full_sasne_dashboard(
         ax_heat.set_xticklabels(tick_labels, rotation=45)
         ax_heat.set_yticks(heat_indices + 0.5)
         ax_heat.set_yticklabels(tick_labels, rotation=0)
-
-        ax_heat.set_title(f"SAGD Distances (d={d})")
         ax_heat.set_xlabel("Time")
+        ax_heat.legend(loc='upper left')
         if i == 0:
             ax_heat.set_ylabel("Time")
-            ax_heat.legend(loc='upper left')
-
     plt.tight_layout()
-
     if save_path:
         plt.savefig(save_path, dpi=300, bbox_inches='tight')
     plt.show()
