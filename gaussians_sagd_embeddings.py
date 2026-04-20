@@ -12,6 +12,8 @@ from stats import normalize, Kruglov_distance
 from scipy.stats import wasserstein_distance
 from adaptive_knn import AdaptiveKNNGraph # comes from graph-theory repo
 from pathlib import Path
+from SASNE.SASNE import SASNE
+from scipy.spatial.distance import pdist, squareform
 
 
 def ctd_job(
@@ -19,7 +21,10 @@ def ctd_job(
         laplacian: str,
         normalization: str
 ):
-    C_Gi = CTD_matrix(W=w_result, laplacian_type=laplacian)
+    C_Gi = CTD_matrix(
+        W=w_result,
+        laplacian_type=laplacian
+    )
     triu_i = C_Gi[np.triu_indices(w_result.shape[0], k=1)]
     
     norm_i = normalize(
@@ -45,15 +50,15 @@ def knn_job(
 
 
 if __name__ == "__main__":
-    torch.manual_seed(123)
-    ds = [2, 256, 1024, 4096, 16384]
+    torch.manual_seed(9009)
+    ds = [2, 50, 256, 1024, 4096, 16384]
     T = 10
     n_steps = 1000
     n_samples = 1000
     dt = T / n_steps
     times = np.arange(0, T, dt)
 
-    n_threads = 16
+    n_threads = 10
     
     for d in ds:
         mu_star = torch.ones(d) * 4
@@ -63,7 +68,7 @@ if __name__ == "__main__":
             list(set(list(range(0, len(times), 10)) + [ts_idx, len(times) - 1])),
             reverse=True
         )
-        path = Path(f"data/D{d}_N1000_100ts/")
+        path = Path(f"data/exp_05/D{d}_N1000_100ts/")
         path.mkdir(parents=True, exist_ok=True)
         history_file = path / f"D{d}_N1000.jbl"
         
@@ -123,7 +128,13 @@ if __name__ == "__main__":
                 w_results.append(W)
                 k_results.append(k)
             
-            joblib.dump({"Ws": w_results, "ks": k_results, 'ts': time_snaps}, ws_file, compress=3)
+            joblib.dump(
+                {"Ws": w_results,
+                 "ks": k_results,
+                 'ts': time_snaps
+                 },
+                ws_file, compress=3
+            )
         else:
             print(f"[D={d}] Weights found. Loading...")
             load_file = joblib.load(ws_file)
@@ -181,4 +192,24 @@ if __name__ == "__main__":
                 sagd_dist_matrix[j, i] = dist
                     
             joblib.dump(sagd_dist_matrix, sagd_file, compress=3)
-            
+        else:
+            print(f"[D={d}] SAGD matrix found. Loading...")
+            sagd_dist_matrix = joblib.load(sagd_file)
+
+
+        # SASNE embedding
+        sasne_file = path / f"D{d}_N1000_SASNE.jbl"
+
+        if not sasne_file.exists():
+            embedding, Z = SASNE(sagd_dist_matrix)
+            D1 = squareform(pdist(embedding))
+            D2 = squareform(pdist(Z))
+
+            sasne_dump = {
+                'embedding': embedding,
+                'Z': Z,
+                'D1': D1,
+                'D2': D2,
+            }
+            joblib.dump(sasne_dump, sasne_file, compress=3)
+    print('Done!')
