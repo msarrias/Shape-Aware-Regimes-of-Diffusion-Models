@@ -10,13 +10,14 @@ from scipy.spatial.distance import pdist, squareform
 from plotting import plot_full_sasne_dashboard
 from SASNE.SASNE import SASNE
 
+
 if __name__ == "__main__":
     sasne_embeddings_list = []
     sagd_dist_matrices_list = []
     ts_list = []
     time_snaps = []
     d_list = [2, 50, 256, 1024, 4096, 16384]
-    path = Path('data/exp_04')
+    path = Path('data/exp_05')
     for d in d_list:
         print(f'd = {d}')
         loaded_data = joblib.load(path / f"D{d}_N1000_100ts/D{d}_N1000.jbl")
