@@ -209,5 +209,8 @@ class AdaptiveKNNGraph:
             kernel_matrix = self.gaussian_kernel()
         elif self.kernel == 'inverse_sq_euclidean_d':
             kernel_matrix = self.inverse_sq_euclidean_kernel()
+        else:
+            raise ValueError(f"Unsupported kernel type: '{self.kernel}'. "
+                             f"Must be 'gaussian' or 'inverse_sq_euclidean_d'.")
         W = np.where(A > 0, np.maximum(kernel_matrix, 1e-6), 0.0)
         return W

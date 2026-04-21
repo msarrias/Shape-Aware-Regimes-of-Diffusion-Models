@@ -10,8 +10,8 @@ from distances import CTD_matrix
 from numpy import isclose
 from stats import normalize, Kruglov_distance
 from scipy.stats import wasserstein_distance
-from adaptive_knn import AdaptiveKNNGraph # comes from graph-theory repo
 from pathlib import Path
+from SASNE.adaptive_knn import AdaptiveKNNGraph
 from SASNE.SASNE import SASNE
 from scipy.spatial.distance import pdist, squareform
 
@@ -59,7 +59,7 @@ if __name__ == "__main__":
     dt = T / n_steps
     times = np.arange(0, T, dt)
 
-    n_threads = 5
+    n_threads = 10
     
     for d in ds:
         mu_star = torch.ones(d) * 4
