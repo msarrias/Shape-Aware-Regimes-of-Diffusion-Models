@@ -194,19 +194,22 @@ class AdaptiveKNNGraph:
                         adj[np.ix_(indices, indices)] = self.build_refined_adj(dist_matrix=sub_dist)
         return adj
 
-    def gaussian_kernel(self):
-        knn_distances = self.true_dist_matrix[np.arange(self.n_samples), self.sorted_ind[self.k - 1]]
-        self.sigma = np.median(knn_distances)
+    def gaussian_kernel(self, sigma=None):
+        if not sigma:
+            knn_distances = self.true_dist_matrix[np.arange(self.n_samples), self.sorted_ind[self.k - 1]]
+            self.sigma = np.median(knn_distances)
+        else:
+            self.sigma = sigma
         dist_sq = self.true_dist_matrix ** 2
         return np.exp(-dist_sq / (2 * (self.sigma ** 2)))
 
     def inverse_sq_euclidean_kernel(self):
         return 1.0 / (1.0 + self.true_dist_matrix ** 2)
 
-    def compute_W(self):
+    def compute_W(self, sigma=None):
         A = self.build_refined_adj()
         if self.kernel == 'gaussian':
-            kernel_matrix = self.gaussian_kernel()
+            kernel_matrix = self.gaussian_kernel(sigma=sigma)
         elif self.kernel == 'inverse_sq_euclidean_d':
             kernel_matrix = self.inverse_sq_euclidean_kernel()
         else:
