@@ -19,7 +19,8 @@ from scipy.spatial.distance import pdist, squareform
 def ctd_job(
         w_result: np.ndarray,
         laplacian: str,
-        normalization: str
+        normalization: str,
+        volume
 ):
     C_Gi = CTD_matrix(
         W=w_result,
@@ -30,7 +31,7 @@ def ctd_job(
     norm_i = normalize(
         list_values=triu_i,
         norm_type=normalization,
-        Vol=np.sum(w_result)
+        Vol=volume
     )
     return {'ctds': triu_i, 'norm_ctds': norm_i}
 
@@ -38,28 +39,41 @@ def ctd_job(
 def knn_job(
         data: np.ndarray,
         inject_edges: bool,
-        kernel: str
+        kernel: str,
+        sigma: float=None,
 ):
     knn_obj = AdaptiveKNNGraph(
         data=data,
         inject_edges=inject_edges,
         kernel=kernel
     )
-    w_matrix = knn_obj.compute_W()
-    return knn_obj.k, w_matrix
+    w_matrix = knn_obj.compute_W(sigma=sigma)
+    if kernel == 'gaussian':
+        return knn_obj.k, knn_obj.sigma, w_matrix
+    return knn_obj.k, None, w_matrix
 
 
 if __name__ == "__main__":
     sys.setrecursionlimit(2000)
-    torch.manual_seed(9009)
-    ds = [2, 50, 256, 1024, 4096, 16384]
+    seed = 123456
+    torch.manual_seed(seed)
+    ds = np.concatenate([
+        np.arange(2, 16),
+        np.arange(20, 51, 5),
+        [256, 1024, 4096, 16384]
+    ])
     T = 10
     n_steps = 1000
     n_samples = 1000
     dt = T / n_steps
     times = np.arange(0, T, dt)
+    inject_edges_bool = True
+    kernel_choice =  "gaussian" #"inverse_sq_euclidean_d" #
+    laplacian_type = "unnormalized"
+    norm_type = "norm_wrt_volume" #"norm_wrt_avg_ctd"
+    exp_path = Path('data/exp_04')
 
-    n_threads = 10
+    n_threads = 20
     
     for d in ds:
         mu_star = torch.ones(d) * 4
@@ -69,7 +83,7 @@ if __name__ == "__main__":
             list(set(list(range(0, len(times), 10)) + [ts_idx, len(times) - 1])),
             reverse=True
         )
-        path = Path(f"data/exp_05/D{d}_N1000_100ts/")
+        path = exp_path / f"D{d}_N1000_100ts/"
         path.mkdir(parents=True, exist_ok=True)
         history_file = path / f"D{d}_N1000.jbl"
         
@@ -100,7 +114,8 @@ if __name__ == "__main__":
                     "mu_star": mu_star.numpy(),
                     "std": std,
                     "ts": t_s,
-                    "ts_idx":ts_idx
+                    "ts_idx":ts_idx,
+                    "seed": seed
                     }
                 }
             
@@ -112,32 +127,44 @@ if __name__ == "__main__":
 
         # Graph Construction
         ws_file = path / f"D{d}_N1000_Ws.jbl"
-        
         if not ws_file.exists():
-            w_results, k_results = [], []
-            inject_edges_bool = True
-            kernel_choice = "gaussian"
+            w_results, k_results, sigma_results = [], [], []
+            if kernel_choice == "gaussian":
+                knn_0 = knn_job(
+                    data=history[time_snaps[-1]],
+                    inject_edges=inject_edges_bool,
+                    kernel=kernel_choice,
+                    sigma=None
+                )
+                _, sigma_0, _ = knn_0
+            else:
+                sigma_0 = None
 
             knn_results = Parallel(n_jobs=n_threads, backend="threading")(
                 delayed(knn_job)(
-                    history[t], inject_edges_bool, kernel_choice)
+                    history[t], inject_edges_bool, kernel_choice, sigma_0)
                 for t in tqdm(time_snaps, desc="KNN Progress")
             )
-            
-            for t, knn_obj in zip(time_snaps, knn_results):
-                k, W = knn_obj
+            for t, knn_tuple in zip(time_snaps, knn_results):
+                k, sigma, W = knn_tuple
                 w_results.append(W)
                 k_results.append(k)
-            
-            joblib.dump(
-                {"Ws": w_results,
-                 "ks": k_results,
-                 'ts': time_snaps
-                 },
-                ws_file, compress=3
-            )
+            #
+            # if kernel_choice == "gaussian":
+            #     sigma_results.append(sigma)
+
+            results_dict = {
+                "Ws": w_results,
+                "ks": k_results,
+                'ts': time_snaps,
+                'kernel_choice': kernel_choice
+                 }
+            if kernel_choice == "gaussian":
+                results_dict["sigma"] = sigma_0
+
+            joblib.dump(results_dict, ws_file, compress=3)
         else:
-            print(f"[D={d}] Weights found. Loading...")
+            print(f"[D={d}] WS found. Loading...")
             load_file = joblib.load(ws_file)
             w_results = load_file["Ws"]
             time_snaps = load_file['ts']
@@ -145,13 +172,17 @@ if __name__ == "__main__":
         # CTD Calculation
         ctd_file = path / f"D{d}_N1000_CTDs.jbl"
         if not ctd_file.exists():
-            laplacian_type = "unnormalized"
-            norm_type = "norm_wrt_avg_ctd"
-
-            ctds = Parallel(n_jobs=n_threads)(
-                delayed(ctd_job)(W_i, laplacian_type, norm_type)
-                for W_i in tqdm(w_results, total=len(w_results), desc="CTD Logic")
-            )
+            if norm_type == "norm_wrt_volume":
+                w_0_vol =np.sum(w_results[-1])
+                ctds = Parallel(n_jobs=n_threads)(
+                    delayed(ctd_job)(W_i, laplacian_type, norm_type, w_0_vol)
+                    for W_i in tqdm(w_results, total=len(w_results), desc="CTD Logic")
+                )
+            else:
+                ctds = Parallel(n_jobs=n_threads)(
+                    delayed(ctd_job)(W_i, laplacian_type, norm_type, np.sum(W_i))
+                    for W_i in tqdm(w_results, total=len(w_results), desc="CTD Logic")
+                )
             ctds_dict = {t: ctd for t, ctd in zip(time_snaps, ctds)}
             ctd_dump = {
                 "CTDs": ctds_dict,
@@ -161,15 +192,13 @@ if __name__ == "__main__":
                     "ts": time_snaps
                 }
             }
-            
             joblib.dump(ctd_dump, ctd_file, compress=3)
         else:
             print(f"[D={d}] CTDs found. Loading...")
             ctds_dict = joblib.load(ctd_file)["CTDs"]
-    
+
         # SAGD Distance Matrix
         sagd_file = path / f"D{d}_N1000_SAGD.jbl"
-        
         if not sagd_file.exists():
             norm_ctds_list = [t_ctds_dict['norm_ctds'] for t, t_ctds_dict in ctds_dict.items()]
             num_graphs = len(norm_ctds_list)
@@ -179,7 +208,7 @@ if __name__ == "__main__":
             for i in range(test_size):
                 for j in range(test_size):
                     kruglov_dist = Kruglov_distance(norm_ctds_list[i], norm_ctds_list[j])
-                    wasserstein_dist = wasserstein_distance(norm_ctds_list[i], norm_ctds_list[j]) 
+                    wasserstein_dist = wasserstein_distance(norm_ctds_list[i], norm_ctds_list[j])
                     assert isclose(kruglov_dist, wasserstein_dist)
 
             distances = Parallel(n_jobs=n_threads)(
@@ -191,16 +220,14 @@ if __name__ == "__main__":
             for (i, j), dist in zip(pairs, distances):
                 sagd_dist_matrix[i, j] = dist
                 sagd_dist_matrix[j, i] = dist
-                    
+
             joblib.dump(sagd_dist_matrix, sagd_file, compress=3)
         else:
             print(f"[D={d}] SAGD matrix found. Loading...")
             sagd_dist_matrix = joblib.load(sagd_file)
 
-
         # SASNE embedding
         sasne_file = path / f"D{d}_N1000_SASNE.jbl"
-
         if not sasne_file.exists():
             embedding, Z = SASNE(sagd_dist_matrix)
             D1 = squareform(pdist(embedding))
