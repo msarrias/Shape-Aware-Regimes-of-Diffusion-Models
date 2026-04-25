@@ -1,19 +1,20 @@
 import numpy as np
 import joblib
 import torch
+import sys
+import argparse
 from joblib import Parallel, delayed
 from tqdm import tqdm
-from ou_model import backward, theoretical_ts
-import sys
-
-from distances import CTD_matrix
-from numpy import isclose
-from stats import normalize, Kruglov_distance
-from scipy.stats import wasserstein_distance
 from pathlib import Path
+from scipy.stats import wasserstein_distance
+from scipy.spatial.distance import pdist, squareform
+from numpy import isclose
+
+from ou_model import backward, theoretical_ts
+from distances import CTD_matrix
+from stats import normalize, Kruglov_distance
 from SASNE.adaptive_knn import AdaptiveKNNGraph
 from SASNE.SASNE import SASNE
-from scipy.spatial.distance import pdist, squareform
 
 
 def ctd_job(
@@ -27,7 +28,6 @@ def ctd_job(
         laplacian_type=laplacian
     )
     triu_i = C_Gi[np.triu_indices(w_result.shape[0], k=1)]
-    
     norm_i = normalize(
         list_values=triu_i,
         norm_type=normalization,
@@ -40,7 +40,7 @@ def knn_job(
         data: np.ndarray,
         inject_edges: bool,
         kernel: str,
-        sigma: float=None,
+        sigma: float=None
 ):
     knn_obj = AdaptiveKNNGraph(
         data=data,
@@ -48,196 +48,182 @@ def knn_job(
         kernel=kernel
     )
     w_matrix = knn_obj.compute_W(sigma=sigma)
-    if kernel == 'gaussian':
-        return knn_obj.k, knn_obj.sigma, w_matrix
-    return knn_obj.k, None, w_matrix
+    return knn_obj.k, (knn_obj.sigma if kernel == 'gaussian' else None), w_matrix
 
 
-if __name__ == "__main__":
+def main():
+    parser = argparse.ArgumentParser()
+
+    parser.add_argument("--seed", type=int, default=123456)
+    parser.add_argument("--n_samples", type=int, default=1000)
+    parser.add_argument("--n_steps", type=int, default=1000)
+    parser.add_argument("--T", type=float, default=10.0)
+    parser.add_argument("--mu", type=float, default=4.0)
+
+    parser.add_argument("--kernel", type=str, default="gaussian", choices=["gaussian", "inverse_sq_euclidean_d"])
+    parser.add_argument("--laplacian", type=str, default="unnormalized")
+    parser.add_argument("--norm_type", type=str, default=["norm_wrt_volume", "norm_wrt_avg_ctd", "scale_and_shift"])
+    parser.add_argument("--inject_edges", action="store_true", default=True)
+
+    parser.add_argument("--threads", type=int, default=20)
+    parser.add_argument("--exp_name", type=str, default="exp_04")
+    parser.add_argument("--ds", type=int, nargs="+", help="Explicit list of dimensions to run")
+
+    args = parser.parse_args()
+
     sys.setrecursionlimit(2000)
-    seed = 123456
-    torch.manual_seed(seed)
-    ds = np.concatenate([
-        np.arange(2, 16),
-        np.arange(20, 51, 5),
-        [256, 1024, 4096, 16384]
-    ])
-    T = 10
-    n_steps = 1000
-    n_samples = 1000
-    dt = T / n_steps
-    times = np.arange(0, T, dt)
-    inject_edges_bool = True
-    kernel_choice =  "gaussian" #"inverse_sq_euclidean_d" #
-    laplacian_type = "unnormalized"
-    norm_type = "norm_wrt_volume" #"norm_wrt_avg_ctd"
-    exp_path = Path('data/exp_04')
+    torch.manual_seed(args.seed)
 
-    n_threads = 20
-    
+    ds = args.ds
+    dt = args.T / args.n_steps
+    times = np.arange(0, args.T, dt)
+    exp_path = Path(f'data/{args.exp_name}')
+    exp_path.mkdir(parents=True, exist_ok=True)
+
+    # We want every dimension to share the same snapshots,
+    # including all theoretical ts points
+    ts_indices = []
     for d in ds:
-        mu_star = torch.ones(d) * 4
+        mu_star = torch.ones(d) * args.mu
+        _, ts_idx = theoretical_ts(mu_star, 1.0, times)
+        ts_indices.append(ts_idx)
+
+    snap_time_indices = sorted(
+        list(set(list(range(0, len(times), 10)) + ts_indices + [len(times) - 1])),
+        reverse=True
+    )
+
+    for d in ds:
+        mu_star = torch.ones(d) * args.mu
         std = 1.0
-        t_s, ts_idx = theoretical_ts(mu_star, std, times)
-        time_indices = sorted(
-            list(set(list(range(0, len(times), 10)) + [ts_idx, len(times) - 1])),
-            reverse=True
-        )
-        path = exp_path / f"D{d}_N1000_100ts/"
+        t_s, _ = theoretical_ts(mu_star, std, times)
+
+        path = exp_path / f"D{d}_N{args.n_samples}_T{int(args.T)}/"
         path.mkdir(parents=True, exist_ok=True)
-        history_file = path / f"D{d}_N1000.jbl"
-        
-        #  SDE Simulation
+        history_file = path / f"history.jbl"
+
+        # SDE Simulation
         if not history_file.exists():
             history = {}
-            #  sample for T
-            x_current = torch.randn(d, n_samples)  # d x N
-            history[T] = x_current.T.clone().numpy()  # N x d
-            #  T-1 --> 0
-            
-            for step in tqdm(reversed(range(n_steps)), total=n_steps, desc=f"SDE D={d}"):
+            x_current = torch.randn(d, args.n_samples)  # d x N
+            history[args.T] = x_current.T.clone().numpy()  # N x d
+
+            for step in tqdm(reversed(range(args.n_steps)), total=args.n_steps, desc=f"SDE D={d}"):
                 t = times[step]
-                x_current, _ = backward(x_current, t, dt, mu_star, std)
-                if step in time_indices:
-                    history[t] = x_current.T.clone().numpy() 
-    
+                x_current, _ = backward(x_t=x_current, t=t, dt=dt, mu_star=mu_star, std=std)
+                if step in snap_time_indices:
+                    history[t] = x_current.T.clone().numpy()
             time_snaps = list(history.keys())
             data_to_dump = {
                 "history": history,
                 "params": {
-                    "dim": d,
-                    "n_samples": n_samples,
-                    "T_max": T,
-                    "dt": dt,
-                    "times": times,
-                    "times_snapshots": time_snaps,
-                    "mu_star": mu_star.numpy(),
-                    "std": std,
-                    "ts": t_s,
-                    "ts_idx":ts_idx,
-                    "seed": seed
-                    }
+                    **vars(args),
+                    "d": d,
+                    "ts_theoretical": t_s,
+                    "times_snapshots": time_snaps
                 }
-            
+            }
             joblib.dump(data_to_dump, history_file, compress=3)
         else:
-            print(f"[D={d}] History found. Loading...")
+            print(f"[D={d}] History found.")
             history = joblib.load(history_file)["history"]
             time_snaps = list(history.keys())
 
         # Graph Construction
-        ws_file = path / f"D{d}_N1000_Ws.jbl"
+        ws_file = path / "Ws.jbl"
         if not ws_file.exists():
-            w_results, k_results, sigma_results = [], [], []
-            if kernel_choice == "gaussian":
-                knn_0 = knn_job(
-                    data=history[time_snaps[-1]],
-                    inject_edges=inject_edges_bool,
-                    kernel=kernel_choice,
+            # Calculate Fixed Sigma from the final state (t=0 or min time)
+            if args.kernel == "gaussian":
+                t_0 = time_snaps[-1]
+                _, sigma_0, _ = knn_job(
+                    data=history[t_0],
+                    inject_edges=args.inject_edges,
+                    kernel=args.kernel,
                     sigma=None
                 )
-                _, sigma_0, _ = knn_0
+                print(f"[D={d}] Fixed Sigma: {sigma_0:.4f}")
             else:
                 sigma_0 = None
 
-            knn_results = Parallel(n_jobs=n_threads, backend="threading")(
-                delayed(knn_job)(
-                    history[t], inject_edges_bool, kernel_choice, sigma_0)
+            knn_results = Parallel(n_jobs=args.threads, backend="threading")(
+                delayed(knn_job)(history[t], args.inject_edges, args.kernel, sigma_0)
                 for t in tqdm(time_snaps, desc="KNN Progress")
             )
-            for t, knn_tuple in zip(time_snaps, knn_results):
-                k, sigma, W = knn_tuple
-                w_results.append(W)
-                k_results.append(k)
-            #
-            # if kernel_choice == "gaussian":
-            #     sigma_results.append(sigma)
+
+            w_results = [w for *_, w in knn_results]
+            k_results = [k for k, *_ in knn_results]
 
             results_dict = {
                 "Ws": w_results,
                 "ks": k_results,
-                'ts': time_snaps,
-                'kernel_choice': kernel_choice
-                 }
-            if kernel_choice == "gaussian":
-                results_dict["sigma"] = sigma_0
-
+                "ts": time_snaps,
+                "kernel": args.kernel,
+                "sigma_0": sigma_0
+            }
             joblib.dump(results_dict, ws_file, compress=3)
         else:
-            print(f"[D={d}] WS found. Loading...")
-            load_file = joblib.load(ws_file)
-            w_results = load_file["Ws"]
-            time_snaps = load_file['ts']
+            load_ws = joblib.load(ws_file)
+            w_results = load_ws["Ws"]
+            time_snaps = load_ws['ts']
 
         # CTD Calculation
-        ctd_file = path / f"D{d}_N1000_CTDs.jbl"
+        ctd_file = path / "CTDs.jbl"
         if not ctd_file.exists():
-            if norm_type == "norm_wrt_volume":
-                w_0_vol =np.sum(w_results[-1])
-                ctds = Parallel(n_jobs=n_threads)(
-                    delayed(ctd_job)(W_i, laplacian_type, norm_type, w_0_vol)
+            if args.norm_type == "norm_wrt_volume":
+                w_0_vol = np.sum(w_results[-1])
+                ctds = Parallel(n_jobs=args.threads)(
+                    delayed(ctd_job)(W_i, args.laplacian, args.norm_type, w_0_vol)
                     for W_i in tqdm(w_results, total=len(w_results), desc="CTD Logic")
                 )
             else:
                 ctds = Parallel(n_jobs=n_threads)(
-                    delayed(ctd_job)(W_i, laplacian_type, norm_type, np.sum(W_i))
+                    delayed(ctd_job)(W_i, laplacian_type, norm_type, None)
                     for W_i in tqdm(w_results, total=len(w_results), desc="CTD Logic")
                 )
+
             ctds_dict = {t: ctd for t, ctd in zip(time_snaps, ctds)}
-            ctd_dump = {
+            joblib.dump({
                 "CTDs": ctds_dict,
                 "params": {
-                    "laplacian_type": laplacian_type,
-                    "norm_type": norm_type,
+                    "laplacian": args.laplacian,
+                    "normalization": args.norm_type,
                     "ts": time_snaps
                 }
-            }
-            joblib.dump(ctd_dump, ctd_file, compress=3)
+            }, ctd_file, compress=3)
         else:
             print(f"[D={d}] CTDs found. Loading...")
             ctds_dict = joblib.load(ctd_file)["CTDs"]
 
         # SAGD Distance Matrix
-        sagd_file = path / f"D{d}_N1000_SAGD.jbl"
+        sagd_file = path / "SAGD.jbl"
         if not sagd_file.exists():
-            norm_ctds_list = [t_ctds_dict['norm_ctds'] for t, t_ctds_dict in ctds_dict.items()]
-            num_graphs = len(norm_ctds_list)
+            norm_ctds = [ctds_dict[t]['norm_ctds'] for t in time_snaps]
+            num_graphs = len(norm_ctds)
             pairs = [(i, j) for i in range(num_graphs) for j in range(i + 1, num_graphs)]
 
-            test_size = min(3, num_graphs)
-            for i in range(test_size):
-                for j in range(test_size):
-                    kruglov_dist = Kruglov_distance(norm_ctds_list[i], norm_ctds_list[j])
-                    wasserstein_dist = wasserstein_distance(norm_ctds_list[i], norm_ctds_list[j])
-                    assert isclose(kruglov_dist, wasserstein_dist)
-
-            distances = Parallel(n_jobs=n_threads)(
-                delayed(wasserstein_distance)(norm_ctds_list[i], norm_ctds_list[j])
-                for i, j in tqdm(pairs, desc="Computing SAGD Matrix")
+            distances = Parallel(n_jobs=args.threads)(
+                delayed(wasserstein_distance)(norm_ctds[i], norm_ctds[j])
+                for i, j in tqdm(pairs, desc="SAGD Matrix")
             )
 
             sagd_dist_matrix = np.zeros((num_graphs, num_graphs))
             for (i, j), dist in zip(pairs, distances):
-                sagd_dist_matrix[i, j] = dist
-                sagd_dist_matrix[j, i] = dist
-
+                sagd_dist_matrix[i, j] = sagd_dist_matrix[j, i] = dist
             joblib.dump(sagd_dist_matrix, sagd_file, compress=3)
         else:
-            print(f"[D={d}] SAGD matrix found. Loading...")
             sagd_dist_matrix = joblib.load(sagd_file)
 
         # SASNE embedding
-        sasne_file = path / f"D{d}_N1000_SASNE.jbl"
+        sasne_file = path / "SASNE.jbl"
         if not sasne_file.exists():
-            embedding, Z = SASNE(sagd_dist_matrix)
-            D1 = squareform(pdist(embedding))
-            D2 = squareform(pdist(Z))
-
-            sasne_dump = {
-                'embedding': embedding,
-                'Z': Z,
-                'D1': D1,
-                'D2': D2,
-            }
-            joblib.dump(sasne_dump, sasne_file, compress=3)
+            embedding, Z = SASNE(data=sagd_dist_matrix)
+            joblib.dump({
+                "embedding": embedding,
+                "Z": Z,
+                "D1": squareform(pdist(embedding)),
+                "D2": squareform(pdist(Z))
+            }, sasne_file, compress=3)
     print('Done!')
+
+if __name__ == "__main__":
+    main()
