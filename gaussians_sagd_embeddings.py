@@ -108,7 +108,7 @@ def main():
             x_current = torch.randn(d, args.n_samples)  # d x N
             history[args.T] = x_current.T.clone().numpy()  # N x d
 
-            for step in tqdm(reversed(range(args.n_steps)), total=args.n_steps, desc=f"SDE D={d}"):
+            for step in tqdm(reversed(range(args.n_steps)), total=args.n_steps, desc=f"[D={d}] SDE"):
                 t = times[step]
                 x_current, _ = backward(x_t=x_current, t=t, dt=dt, mu_star=mu_star, std=std)
                 if step in snap_time_indices:
@@ -125,7 +125,7 @@ def main():
             }
             joblib.dump(data_to_dump, history_file, compress=3)
         else:
-            print(f"[D={d}] History found.")
+            print(f"[D={d}] History found. Loading...")
             history = joblib.load(history_file)["history"]
             time_snaps = list(history.keys())
 
@@ -147,7 +147,7 @@ def main():
 
             knn_results = Parallel(n_jobs=args.threads, backend="threading")(
                 delayed(knn_job)(history[t], args.inject_edges, args.kernel, sigma_0)
-                for t in tqdm(time_snaps, desc="KNN Progress")
+                for t in tqdm(time_snaps, desc=f"[D={d}] KNN Progress")
             )
 
             w_results = [w for *_, w in knn_results]
@@ -162,6 +162,7 @@ def main():
             }
             joblib.dump(results_dict, ws_file, compress=3)
         else:
+            print(f"[D={d}] Ws found. Loading...")
             load_ws = joblib.load(ws_file)
             w_results = load_ws["Ws"]
             time_snaps = load_ws['ts']
@@ -170,17 +171,14 @@ def main():
         ctd_file = path / "CTDs.jbl"
         if not ctd_file.exists():
             if args.norm_type == "norm_wrt_volume":
-                w_0_vol = np.sum(w_results[-1])
-                ctds = Parallel(n_jobs=args.threads)(
-                    delayed(ctd_job)(W_i, args.laplacian, args.norm_type, w_0_vol)
-                    for W_i in tqdm(w_results, total=len(w_results), desc="CTD Logic")
-                )
+                vol = np.sum(w_results[-1])
             else:
-                ctds = Parallel(n_jobs=n_threads)(
-                    delayed(ctd_job)(W_i, laplacian_type, norm_type, None)
-                    for W_i in tqdm(w_results, total=len(w_results), desc="CTD Logic")
-                )
+                vol = None
 
+            ctds = Parallel(n_jobs=args.threads)(
+                delayed(ctd_job)(W_i, args.laplacian, args.norm_type, vol)
+                for W_i in tqdm(w_results, total=len(w_results), desc=f"[D={d}] CTD Logic")
+            )
             ctds_dict = {t: ctd for t, ctd in zip(time_snaps, ctds)}
             joblib.dump({
                 "CTDs": ctds_dict,
@@ -203,7 +201,7 @@ def main():
 
             distances = Parallel(n_jobs=args.threads)(
                 delayed(wasserstein_distance)(norm_ctds[i], norm_ctds[j])
-                for i, j in tqdm(pairs, desc="SAGD Matrix")
+                for i, j in tqdm(pairs, desc=f"[D={d}] SAGD Matrix")
             )
 
             sagd_dist_matrix = np.zeros((num_graphs, num_graphs))
