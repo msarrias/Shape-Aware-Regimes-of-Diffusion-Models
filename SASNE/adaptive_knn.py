@@ -1,4 +1,5 @@
 from scipy.spatial.distance import pdist, squareform
+
 import numpy as np
 
 
@@ -76,12 +77,12 @@ class AdaptiveKNNGraph:
         Checks if all nodes are reachable from node 0.
         :param adj: Adjacency matrix of the graph
         """
-        if self.n_samples <= 1:
+        if len(adj) <= 1:
             return True
 
         start_node = 0
         marked = {start_node}
-        unmarked = set(range(self.n_samples)) - {start_node}
+        unmarked = set(range(len(adj))) - {start_node}
 
         _, remaining = self._depth_first_search(
             v=start_node,
@@ -176,6 +177,10 @@ class AdaptiveKNNGraph:
         # Save k only if we are at the top level
         if is_top_level:
             self.k = k
+        elif not self.k:
+            raise ValueError("Global k is not defined on connected component level")
+        elif k > self.k:
+            raise ValueError("Connected component k {} exceeds global k {}".format(k, self.k))
 
         adj = self.get_adjacency(k=k, dist_subset=D)
 
