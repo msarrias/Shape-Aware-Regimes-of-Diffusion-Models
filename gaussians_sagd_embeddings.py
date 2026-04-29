@@ -23,7 +23,7 @@ def setup_logging(exp_path, args):
 
     logging.basicConfig(
         level=logging.INFO,
-        format='%(asctime)s | %(levelname)s | %(message)s',
+        format='%(message)s',
         handlers=[
             logging.FileHandler(log_file),
             logging.StreamHandler(sys.stdout)
@@ -80,9 +80,11 @@ def main():
     parser.add_argument("--T", type=float, default=10.0)
     parser.add_argument("--mu", type=float, default=4.0)
 
-    parser.add_argument("--kernel", type=str, default="gaussian", choices=["gaussian", "inverse_sq_euclidean_d"])
+    parser.add_argument("--kernel", type=str, default="gaussian",
+                        choices=["gaussian", "inverse_sq_euclidean_d"])
     parser.add_argument("--laplacian", type=str, default="unnormalized")
-    parser.add_argument("--norm_type", type=str, default=["norm_wrt_volume", "norm_wrt_avg_ctd", "scale_and_shift"])
+    parser.add_argument("--norm_type", type=str, default="norm_wrt_volume",
+                        choices=["norm_wrt_volume", "norm_wrt_avg_ctd", "scale_and_shift"])
     parser.add_argument("--inject_edges", action="store_true", default=True)
 
     parser.add_argument("--threads", type=int, default=20)
