@@ -9,12 +9,32 @@ from pathlib import Path
 from scipy.stats import wasserstein_distance
 from scipy.spatial.distance import pdist, squareform
 from numpy import isclose
+import logging
 
 from ou_model import backward, theoretical_ts
 from distances import CTD_matrix
 from stats import normalize, Kruglov_distance
 from SASNE.adaptive_knn import AdaptiveKNNGraph
 from SASNE.SASNE import SASNE
+
+
+def setup_logging(exp_path, args):
+    log_file = exp_path / "settings.log"
+
+    logging.basicConfig(
+        level=logging.INFO,
+        format='%(asctime)s | %(levelname)s | %(message)s',
+        handlers=[
+            logging.FileHandler(log_file),
+            logging.StreamHandler(sys.stdout)
+        ]
+    )
+    logger = logging.getLogger()
+    logger.info("=== Simulation Settings ===")
+    for arg, value in vars(args).items():
+        logger.info(f"{arg}: {value}")
+    logger.info("===========================\n")
+    return logger
 
 
 def ctd_job(
@@ -25,7 +45,7 @@ def ctd_job(
 ):
     C_Gi = CTD_matrix(
         W=w_result,
-        laplacian_type=laplacian
+        laplacian_type=laplacian,
     )
     triu_i = C_Gi[np.triu_indices(w_result.shape[0], k=1)]
     norm_i = normalize(
@@ -79,6 +99,7 @@ def main():
     times = np.arange(0, args.T, dt)
     exp_path = Path(f'data/{args.exp_name}')
     exp_path.mkdir(parents=True, exist_ok=True)
+    logger = setup_logging(exp_path, args)
 
     # We want every dimension to share the same snapshots,
     # including all theoretical ts points
@@ -120,12 +141,13 @@ def main():
                     **vars(args),
                     "d": d,
                     "ts_theoretical": t_s,
-                    "times_snapshots": time_snaps
+                    "times_snapshots": time_snaps,
+                    "times": times
                 }
             }
             joblib.dump(data_to_dump, history_file, compress=3)
         else:
-            print(f"[D={d}] History found. Loading...")
+            logger.info(f"[D={d}] History found. Loading...")
             history = joblib.load(history_file)["history"]
             time_snaps = list(history.keys())
 
@@ -141,7 +163,7 @@ def main():
                     kernel=args.kernel,
                     sigma=None
                 )
-                print(f"[D={d}] Fixed Sigma: {sigma_0:.4f}")
+                logger.info(f"[D={d}] Fixed Sigma: {sigma_0:.4f}")
             else:
                 sigma_0 = None
 
@@ -162,7 +184,7 @@ def main():
             }
             joblib.dump(results_dict, ws_file, compress=3)
         else:
-            print(f"[D={d}] Ws found. Loading...")
+            logger.info(f"[D={d}] Ws found. Loading...")
             load_ws = joblib.load(ws_file)
             w_results = load_ws["Ws"]
             time_snaps = load_ws['ts']
@@ -189,7 +211,7 @@ def main():
                 }
             }, ctd_file, compress=3)
         else:
-            print(f"[D={d}] CTDs found. Loading...")
+            logger.info(f"[D={d}] CTDs found. Loading...")
             ctds_dict = joblib.load(ctd_file)["CTDs"]
 
         # SAGD Distance Matrix
@@ -221,7 +243,7 @@ def main():
                 "D1": squareform(pdist(embedding)),
                 "D2": squareform(pdist(Z))
             }, sasne_file, compress=3)
-    print('Done!')
+    logger.info('Done!')
 
 if __name__ == "__main__":
     main()
