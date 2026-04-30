@@ -156,33 +156,21 @@ def main():
         # Graph Construction
         ws_file = path / "Ws.jbl"
         if not ws_file.exists():
-            # Calculate Fixed Sigma from the final state (t=0 or min time)
-            if args.kernel == "gaussian":
-                t_0 = time_snaps[-1]
-                _, sigma_0, _ = knn_job(
-                    data=history[t_0],
-                    inject_edges=args.inject_edges,
-                    kernel=args.kernel,
-                    sigma=None
-                )
-                logger.info(f"[D={d}] Fixed Sigma: {sigma_0:.4f}")
-            else:
-                sigma_0 = None
-
             knn_results = Parallel(n_jobs=args.threads, backend="threading")(
-                delayed(knn_job)(history[t], args.inject_edges, args.kernel, sigma_0)
+                delayed(knn_job)(history[t], args.inject_edges, args.kernel)
                 for t in tqdm(time_snaps, desc=f"[D={d}] KNN Progress")
             )
 
             w_results = [w for *_, w in knn_results]
             k_results = [k for k, *_ in knn_results]
+            sigma_results = [sigma for _, sigma, _ in knn_results]
 
             results_dict = {
                 "Ws": w_results,
                 "ks": k_results,
                 "ts": time_snaps,
                 "kernel": args.kernel,
-                "sigma_0": sigma_0
+                "sigma": sigma_results
             }
             joblib.dump(results_dict, ws_file, compress=3)
         else:
