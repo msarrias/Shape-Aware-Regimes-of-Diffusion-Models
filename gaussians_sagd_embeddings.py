@@ -84,7 +84,7 @@ def main():
                         choices=["gaussian", "inverse_sq_euclidean_d"])
     parser.add_argument("--laplacian", type=str, default="unnormalized")
     parser.add_argument("--norm_type", type=str, default="norm_wrt_volume",
-                        choices=["norm_wrt_volume", "norm_wrt_avg_ctd", "scale_and_shift"])
+                        choices=["norm_wrt_volume", "norm_wrt_avg_ctd", "scale_and_shift", "rank_norm"])
     parser.add_argument("--inject_edges", action="store_true", default=True)
 
     parser.add_argument("--threads", type=int, default=20)
@@ -163,15 +163,18 @@ def main():
 
             w_results = [w for *_, w in knn_results]
             k_results = [k for k, *_ in knn_results]
-            sigma_results = [sigma for _, sigma, _ in knn_results]
 
             results_dict = {
                 "Ws": w_results,
                 "ks": k_results,
                 "ts": time_snaps,
-                "kernel": args.kernel,
-                "sigma": sigma_results
+                "kernel": args.kernel
             }
+
+            if kernel == "gaussian":
+                sigma_results = [sigma for _, sigma, _ in knn_results]
+                results_dict["sigma"] = sigma_results
+
             joblib.dump(results_dict, ws_file, compress=3)
         else:
             logger.info(f"[D={d}] Ws found. Loading...")
