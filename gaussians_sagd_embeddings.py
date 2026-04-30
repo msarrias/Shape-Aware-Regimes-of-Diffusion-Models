@@ -84,7 +84,7 @@ def main():
                         choices=["gaussian", "inverse_sq_euclidean_d"])
     parser.add_argument("--laplacian", type=str, default="unnormalized")
     parser.add_argument("--norm_type", type=str, default="norm_wrt_volume",
-                        choices=["norm_wrt_volume", "norm_wrt_avg_ctd", "scale_and_shift", "rank_norm"])
+                        choices=["norm_wrt_volume", "norm_wrt_avg_ctd", "scale_and_shift", "log_scale_and_shift"])
     parser.add_argument("--inject_edges", action="store_true", default=True)
 
     parser.add_argument("--threads", type=int, default=20)
