@@ -171,7 +171,7 @@ def main():
                 "kernel": args.kernel
             }
 
-            if kernel == "gaussian":
+            if args.kernel == "gaussian":
                 sigma_results = [sigma for _, sigma, _ in knn_results]
                 results_dict["sigma"] = sigma_results
 
