@@ -39,22 +39,15 @@ def setup_logging(exp_path, args):
 
 def ctd_job(
         w_result: np.ndarray,
-        laplacian: str,
-        normalization: str,
-        volume
+        laplacian: str
 ):
-    C_Gi = CTD_matrix(
+    C_Gi, _ = CTD_matrix(
         W=w_result,
-        laplacian_type=laplacian,
+        laplacian_type=laplacian
     )
     triu_i = C_Gi[np.triu_indices(w_result.shape[0], k=1)]
-    norm_i = normalize(
-        list_values=triu_i,
-        norm_type=normalization,
-        Vol=volume
-    )
-    return {'ctds': triu_i, 'norm_ctds': norm_i}
 
+    return triu_i
 
 def knn_job(
         data: np.ndarray,
@@ -84,7 +77,7 @@ def main():
                         choices=["gaussian", "inverse_sq_euclidean_d"])
     parser.add_argument("--laplacian", type=str, default="unnormalized")
     parser.add_argument("--norm_type", type=str, default="norm_wrt_volume",
-                        choices=["norm_wrt_volume", "norm_wrt_avg_ctd", "scale_and_shift", "log_scale_and_shift"])
+                        choices=["norm_wrt_volume", "norm_wrt_avg_ctd", "scale_and_shift", "log_global_scale_and_shift"])
     parser.add_argument("--inject_edges", action="store_true", default=True)
 
     parser.add_argument("--threads", type=int, default=20)
@@ -185,16 +178,31 @@ def main():
         # CTD Calculation
         ctd_file = path / "CTDs.jbl"
         if not ctd_file.exists():
-            if args.norm_type == "norm_wrt_volume":
-                vol = np.sum(w_results[-1])
-            else:
-                vol = None
-
             ctds = Parallel(n_jobs=args.threads)(
-                delayed(ctd_job)(W_i, args.laplacian, args.norm_type, vol)
+                delayed(ctd_job)(W_i, args.laplacian)
                 for W_i in tqdm(w_results, total=len(w_results), desc=f"[D={d}] CTD Logic")
             )
-            ctds_dict = {t: ctd for t, ctd in zip(time_snaps, ctds)}
+
+            if args.norm_type == "log_global_scale_and_shift":
+
+                all_log_ctds = np.concatenate([np.log1p(triu_i) for  triu_i in ctds])
+                g_min = np.percentile(all_log_ctds, 1)
+                g_max = np.percentile(all_log_ctds, 95)
+                range_ = g_max - g_min
+
+                ctds_dict = {
+                    t: {
+                        'ctds': triu_i,
+                        'norm_ctds': (np.clip( np.log1p(np.array(triu_i)), g_min, g_max) - g_min) / range_
+                    }
+                             for t, triu_i in zip(time_snaps, ctds)
+                             }
+            else:
+                ctds_dict = {
+                    t: {'ctds': triu_i, 'norm_ctds': normalize(triu_i, args.norm_type)}
+                    for t, triu_i in zip(time_snaps, ctds)
+                }
+
             joblib.dump({
                 "CTDs": ctds_dict,
                 "params": {
