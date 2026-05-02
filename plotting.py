@@ -515,7 +515,6 @@ def plot_full_sasne_dashboard(
         plt.savefig(save_path, dpi=300, bbox_inches='tight')
     plt.show()
 
-
 # Three plotting functions below were generated with Claude
 def _draw_sagd_heatmap_with_prob(
         ax_hm,
@@ -526,6 +525,8 @@ def _draw_sagd_heatmap_with_prob(
         d,
         mu,
         std,
+        tsagd=None,
+        tsagd_idx=None,
         show_ylabel=True,
         show_legend=True,
 ):
@@ -534,6 +535,9 @@ def _draw_sagd_heatmap_with_prob(
     probability marginal on top and a colorbar on the right via an
     ``axes_grid1`` divider, so both track the heatmap's rendered size
     (jointplot-style).
+
+    If ``tsagd`` and ``tsagd_idx`` are given, an additional green dashed
+    marker is drawn at that time (heatmap v/h-line and prob v-line).
     """
     from ou_model import same_cluster_prob
 
@@ -553,6 +557,13 @@ def _draw_sagd_heatmap_with_prob(
     ts_r = round(ts, 2)
     ax_hm.axvline(x=ts_idx + 0.5, color='red', linestyle='--', alpha=0.8, label=f'$t_s = {ts_r}$')
     ax_hm.axhline(y=ts_idx + 0.5, color='red', linestyle='--', alpha=0.8)
+
+    if tsagd is not None and tsagd_idx is not None:
+        tsagd_r = round(tsagd, 2)
+        ax_hm.axvline(x=tsagd_idx + 0.5, color='green', linestyle='--', alpha=0.8,
+                      label=f'$t_{{SAGD}} = {tsagd_r}$')
+        ax_hm.axhline(y=tsagd_idx + 0.5, color='green', linestyle='--', alpha=0.8)
+
     ax_hm.set_xlabel("Time", fontsize=12)
     if show_ylabel:
         ax_hm.set_ylabel("Time", fontsize=12)
@@ -568,12 +579,13 @@ def _draw_sagd_heatmap_with_prob(
     x_positions = np.arange(n_samples) + 0.5
     ax_prob.plot(x_positions, probs, color='steelblue', lw=1.5)
     ax_prob.axvline(x=ts_idx + 0.5, color='red', linestyle='--', alpha=0.8)
+    if tsagd is not None and tsagd_idx is not None:
+        ax_prob.axvline(x=tsagd_idx + 0.5, color='green', linestyle='--', alpha=0.8)
     ax_prob.set_ylim(0.48, 1.02)
     ax_prob.tick_params(axis='x', which='both', bottom=False, labelbottom=False)
     ax_prob.set_ylabel("φ(t)", fontsize=12)
     ax_prob.set_title(f"SAGD Distance Matrix (d={d})", fontsize=14)
     sns.despine(ax=ax_prob, top=True, right=True, bottom=True, left=False)
-
 
 def plot_sagd_heatmap_with_prob(
         W,
@@ -583,6 +595,8 @@ def plot_sagd_heatmap_with_prob(
         d,
         mu,
         std,
+        tsagd=None,
+        tsagd_idx=None,
         save_fig_path=None
 ):
     """
@@ -596,16 +610,19 @@ def plot_sagd_heatmap_with_prob(
         Per-coordinate cluster amplitude (so the cluster center is mu*1_d).
     std : float
         Per-cluster internal standard deviation.
+    tsagd, tsagd_idx : float, int, optional
+        If both provided, a green dashed marker is drawn at this time on
+        the heatmap and on the probability marginal.
     """
     fig, ax_hm = plt.subplots(figsize=(8, 9))
     _draw_sagd_heatmap_with_prob(
         ax_hm, W, time_vector, ts, ts_idx, d, mu, std,
+        tsagd=tsagd, tsagd_idx=tsagd_idx,
         show_ylabel=True, show_legend=True,
     )
     if save_fig_path:
         plt.savefig(save_fig_path, dpi=300, bbox_inches='tight')
     plt.show()
-
 
 def plot_sagd_heatmap_row_with_prob(
         W_list,
@@ -614,12 +631,18 @@ def plot_sagd_heatmap_row_with_prob(
         ts_tuple_list,
         mu,
         std,
+        tsagd_tuple_list=None,
         save_fig_path=None,
 ):
     """
     Row of (probability curve on top, SAGD heatmap below) jointplot-style
     panels across dimensions. Each column's marginal and colorbar are pinned
     to the heatmap's rendered size via an ``axes_grid1`` divider.
+
+    ``tsagd_tuple_list`` is an optional list aligned with ``W_list`` of
+    ``(tsagd, tsagd_idx)`` pairs (use ``None`` for columns without one).
+    Where provided, a green dashed marker is drawn alongside the red
+    speciation lines.
     """
     num_plots = len(W_list)
     fig, axes = plt.subplots(
@@ -630,12 +653,20 @@ def plot_sagd_heatmap_row_with_prob(
     if num_plots == 1:
         axes = [axes]
 
-    for i, (W, d, time_vec, ts_tuple) in enumerate(
-            zip(W_list, d_list, time_snaps_vector_list, ts_tuple_list)):
+    if tsagd_tuple_list is None:
+        tsagd_tuple_list = [None] * num_plots
+
+    for i, (W, d, time_vec, ts_tuple, tsagd_tuple) in enumerate(
+            zip(W_list, d_list, time_snaps_vector_list, ts_tuple_list, tsagd_tuple_list)):
         ts, ts_idx = ts_tuple
+        if tsagd_tuple is None:
+            tsagd, tsagd_idx = None, None
+        else:
+            tsagd, tsagd_idx = tsagd_tuple
         _draw_sagd_heatmap_with_prob(
             axes[i],
             W, time_vec, ts, ts_idx, d, mu, std,
+            tsagd=tsagd, tsagd_idx=tsagd_idx,
             show_ylabel=(i == 0),
             show_legend=(i == 0),
         )
