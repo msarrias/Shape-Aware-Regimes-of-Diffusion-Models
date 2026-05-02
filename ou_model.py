@@ -110,7 +110,6 @@ def same_cluster_prob(dim, mu, std, times):
     :param std: The standard deviation (internal variance) of the clusters.
     :param times: The array of time steps used in the simulation.
     """
-    times = np.linspace(0, 9, 100)
     phi = np.zeros(len(times))
     m = mu * np.sqrt(dim)
     for (it, t) in enumerate(times):

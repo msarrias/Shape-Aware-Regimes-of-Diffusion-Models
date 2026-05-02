@@ -5,6 +5,7 @@ import torch
 import seaborn as sns
 from matplotlib.animation import FuncAnimation
 from mpl_toolkits.mplot3d.art3d import Poly3DCollection
+from mpl_toolkits.axes_grid1 import make_axes_locatable
 from SASNE.RRP import RRP
 from matplotlib import pyplot as plt
 
@@ -512,4 +513,133 @@ def plot_full_sasne_dashboard(
     plt.tight_layout()
     if save_path:
         plt.savefig(save_path, dpi=300, bbox_inches='tight')
+    plt.show()
+
+
+# Three plotting functions below were generated with Claude
+def _draw_sagd_heatmap_with_prob(
+        ax_hm,
+        W,
+        time_vector,
+        ts,
+        ts_idx,
+        d,
+        mu,
+        std,
+        show_ylabel=True,
+        show_legend=True,
+):
+    """
+    Draw a square SAGD heatmap into ``ax_hm`` and attach a same-cluster
+    probability marginal on top and a colorbar on the right via an
+    ``axes_grid1`` divider, so both track the heatmap's rendered size
+    (jointplot-style).
+    """
+    from ou_model import same_cluster_prob
+
+    time_arr = np.asarray(time_vector)
+    probs = same_cluster_prob(d, mu, std, time_arr)
+    n_samples = len(time_arr)
+
+    sns.heatmap(W, cmap='viridis', robust=True, ax=ax_hm, cbar=False, square=True)
+
+    indices = np.linspace(0, n_samples - 1, 8, dtype=int)
+    tick_labels = [f"{time_arr[i]:.2f}" for i in indices]
+    ax_hm.set_xticks(indices + 0.5)
+    ax_hm.set_xticklabels(tick_labels, rotation=45)
+    ax_hm.set_yticks(indices + 0.5)
+    ax_hm.set_yticklabels(tick_labels, rotation=0)
+
+    ts_r = round(ts, 2)
+    ax_hm.axvline(x=ts_idx + 0.5, color='red', linestyle='--', alpha=0.8, label=f'$t_s = {ts_r}$')
+    ax_hm.axhline(y=ts_idx + 0.5, color='red', linestyle='--', alpha=0.8)
+    ax_hm.set_xlabel("Time", fontsize=12)
+    if show_ylabel:
+        ax_hm.set_ylabel("Time", fontsize=12)
+    if show_legend:
+        ax_hm.legend(loc='upper left')
+
+    divider = make_axes_locatable(ax_hm)
+    ax_prob = divider.append_axes("top", size="22%", pad=0.2, sharex=ax_hm)
+    cbar_ax = divider.append_axes("right", size="4%", pad=0.1)
+
+    plt.colorbar(ax_hm.collections[0], cax=cbar_ax)
+
+    x_positions = np.arange(n_samples) + 0.5
+    ax_prob.plot(x_positions, probs, color='steelblue', lw=1.5)
+    ax_prob.axvline(x=ts_idx + 0.5, color='red', linestyle='--', alpha=0.8)
+    ax_prob.set_ylim(0.48, 1.02)
+    ax_prob.tick_params(axis='x', which='both', bottom=False, labelbottom=False)
+    ax_prob.set_ylabel("φ(t)", fontsize=12)
+    ax_prob.set_title(f"SAGD Distance Matrix (d={d})", fontsize=14)
+    sns.despine(ax=ax_prob, top=True, right=True, bottom=True, left=False)
+
+
+def plot_sagd_heatmap_with_prob(
+        W,
+        time_vector,
+        ts,
+        ts_idx,
+        d,
+        mu,
+        std,
+        save_fig_path=None
+):
+    """
+    SAGD distance matrix heatmap with a same-cluster probability curve
+    (ou_model.same_cluster_prob) on top, sharing the time (x) axis like a
+    seaborn jointplot.
+
+    Parameters
+    ----------
+    mu : float
+        Per-coordinate cluster amplitude (so the cluster center is mu*1_d).
+    std : float
+        Per-cluster internal standard deviation.
+    """
+    fig, ax_hm = plt.subplots(figsize=(8, 9))
+    _draw_sagd_heatmap_with_prob(
+        ax_hm, W, time_vector, ts, ts_idx, d, mu, std,
+        show_ylabel=True, show_legend=True,
+    )
+    if save_fig_path:
+        plt.savefig(save_fig_path, dpi=300, bbox_inches='tight')
+    plt.show()
+
+
+def plot_sagd_heatmap_row_with_prob(
+        W_list,
+        d_list,
+        time_snaps_vector_list,
+        ts_tuple_list,
+        mu,
+        std,
+        save_fig_path=None,
+):
+    """
+    Row of (probability curve on top, SAGD heatmap below) jointplot-style
+    panels across dimensions. Each column's marginal and colorbar are pinned
+    to the heatmap's rendered size via an ``axes_grid1`` divider.
+    """
+    num_plots = len(W_list)
+    fig, axes = plt.subplots(
+        1, num_plots,
+        figsize=(6 * num_plots, 7.5),
+        gridspec_kw={'wspace': 0.5},
+    )
+    if num_plots == 1:
+        axes = [axes]
+
+    for i, (W, d, time_vec, ts_tuple) in enumerate(
+            zip(W_list, d_list, time_snaps_vector_list, ts_tuple_list)):
+        ts, ts_idx = ts_tuple
+        _draw_sagd_heatmap_with_prob(
+            axes[i],
+            W, time_vec, ts, ts_idx, d, mu, std,
+            show_ylabel=(i == 0),
+            show_legend=(i == 0),
+        )
+
+    if save_fig_path:
+        plt.savefig(save_fig_path, dpi=300, bbox_inches='tight')
     plt.show()
