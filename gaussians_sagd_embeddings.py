@@ -14,8 +14,7 @@ import logging
 from ou_model import backward, theoretical_ts
 from distances import CTD_matrix
 from stats import normalize, Kruglov_distance
-from SASNE.adaptive_knn import AdaptiveKNNGraph
-from SASNE.SASNE import SASNE
+from adaptive_knn import AdaptiveKNNGraph
 
 
 def setup_logging(exp_path, args):
@@ -63,8 +62,151 @@ def knn_job(
     w_matrix = knn_obj.compute_W(sigma=sigma)
     return knn_obj.k, (knn_obj.sigma if kernel == 'gaussian' else None), w_matrix
 
+def diffuse_job(
+        history_file: Path,
+        dim: int,
+        args: argparse.Namespace,
+        times: list,
+        dt: float,
+        snap_time_indices: list,
+        mu_star: float,
+        std: float,
+        ts_theoretical: float,
+        logger: logging.Logger,
+):
+    if not history_file.exists():
+        history = {}
+        x_current = torch.randn(d, args.n_samples)  # d x N
+        history[args.T] = x_current.T.clone().numpy()  # N x d
 
-def main():
+        for step in tqdm(reversed(range(args.n_steps)), total=args.n_steps, desc=f"[D={dim}] SDE"):
+            t = times[step]
+            x_current, _ = backward(x_t=x_current, t=t, dt=dt, mu_star=mu_star, std=std)
+            if step in snap_time_indices:
+                history[t] = x_current.T.clone().numpy()
+        data_to_dump = {
+            "history": history,
+            "params": {
+                **vars(args),
+                "d": d,
+                "ts_theoretical": ts_theoretical,
+                "times_snapshots": list(history.keys()),
+                "times": times
+            }
+        }
+        joblib.dump(data_to_dump, history_file, compress=3)
+    else:
+        logger.info(f"[D={dim}] History found. Loading...")
+        history = joblib.load(history_file)["history"]
+
+    return history
+
+def construct_graph_job(
+        dim:int,
+        ws_file: Path,
+        args: argparse.Namespace,
+        history: dict,
+):
+    time_snaps = list(history.keys())
+    if not ws_file.exists():
+        knn_results = Parallel(n_jobs=args.threads, backend="threading")(
+            delayed(knn_job)(history[t], args.inject_edges, args.kernel)
+            for t in tqdm(time_snaps, desc=f"[D={dim}] KNN Progress")
+        )
+        w_results = [w for *_, w in knn_results]
+        k_results = [k for k, *_ in knn_results]
+
+        results_dict = {
+            "Ws": w_results,
+            "ks": k_results,
+            "ts": time_snaps,
+            "kernel": args.kernel
+        }
+
+        if args.kernel == "gaussian":
+            sigma_results = [sigma for _, sigma, _ in knn_results]
+            results_dict["sigma"] = sigma_results
+
+        joblib.dump(results_dict, ws_file, compress=3)
+    else:
+        logger.info(f"[D={dim}] Ws found. Loading...")
+        load_ws = joblib.load(ws_file)
+        w_results = load_ws["Ws"]
+    return w_results
+
+
+def ctds_job(
+        ctd_file: Path,
+        args: argparse.Namespace,
+        w_results: dict,
+        time_snaps: list,
+        dim: int,
+        logger: logging.Logger,
+):
+    if not ctd_file.exists():
+        ctds = Parallel(n_jobs=args.threads)(
+            delayed(ctd_job)(W_i, args.laplacian)
+            for W_i in tqdm(w_results, total=len(w_results), desc=f"[D={dim}] CTD Logic")
+        )
+
+        if args.norm_type == "log_global_scale_and_shift":
+
+            all_log_ctds = np.concatenate([np.log1p(triu_i) for triu_i in ctds])
+            g_min = np.percentile(all_log_ctds, 1)
+            g_max = np.percentile(all_log_ctds, 95)
+            range_ = g_max - g_min
+
+            ctds_dict = {
+                t: {
+                    'ctds': triu_i,
+                    'norm_ctds': (np.clip(np.log1p(np.array(triu_i)), g_min, g_max) - g_min) / range_
+                }
+                for t, triu_i in zip(time_snaps, ctds)
+            }
+        else:
+            ctds_dict = {
+                t: {'ctds': triu_i, 'norm_ctds': normalize(triu_i, args.norm_type)}
+                for t, triu_i in zip(time_snaps, ctds)
+            }
+
+        joblib.dump({
+            "CTDs": ctds_dict,
+            "params": {
+                "laplacian": args.laplacian,
+                "normalization": args.norm_type,
+                "ts": time_snaps
+            }
+        }, ctd_file, compress=3)
+
+    else:
+        logger.info(f"[D={dim}] CTDs found. Loading...")
+        ctds_dict = joblib.load(ctd_file)["CTDs"]
+    return ctds_dict
+
+
+def sagd_job(
+        sagd_file:Path,
+        ctds_dict: dict,
+        time_snaps: list,
+        dim: int,
+        args: argparse.Namespace,
+):
+    if not sagd_file.exists():
+        norm_ctds = [ctds_dict[t]['norm_ctds'] for t in time_snaps]
+        num_graphs = len(norm_ctds)
+        pairs = [(i, j) for i in range(num_graphs) for j in range(i + 1, num_graphs)]
+
+        distances = Parallel(n_jobs=args.threads)(
+            delayed(wasserstein_distance)(norm_ctds[i], norm_ctds[j])
+            for i, j in tqdm(pairs, desc=f"[D={dim}] SAGD Matrix")
+        )
+
+        sagd_dist_matrix = np.zeros((num_graphs, num_graphs))
+        for (i, j), dist in zip(pairs, distances):
+            sagd_dist_matrix[i, j] = sagd_dist_matrix[j, i] = dist
+        joblib.dump(sagd_dist_matrix, sagd_file, compress=3)
+
+def parse_args():
     parser = argparse.ArgumentParser()
 
     parser.add_argument("--seed", type=int, default=123456)
@@ -75,9 +217,12 @@ def main():
 
     parser.add_argument("--kernel", type=str, default="gaussian",
                         choices=["gaussian", "inverse_sq_euclidean_d"])
+    parser.add_argument("--data-model", type=str, default="bimodal",
+                        choices=["bimodal", "hierarchical"])
     parser.add_argument("--laplacian", type=str, default="unnormalized")
     parser.add_argument("--norm_type", type=str, default="norm_wrt_volume",
-                        choices=["norm_wrt_volume", "norm_wrt_avg_ctd", "scale_and_shift", "log_global_scale_and_shift"])
+                        choices=["norm_wrt_volume", "norm_wrt_avg_ctd", "scale_and_shift",
+                                 "log_global_scale_and_shift"])
     parser.add_argument("--inject_edges", action="store_true", default=True)
 
     parser.add_argument("--threads", type=int, default=20)
@@ -85,16 +230,22 @@ def main():
     parser.add_argument("--ds", type=int, nargs="+", help="Explicit list of dimensions to run")
 
     args = parser.parse_args()
+    return args
 
+
+def main():
+
+    args = parse_args()
     sys.setrecursionlimit(2000)
     torch.manual_seed(args.seed)
+
+    exp_path = Path(f'data/{args.exp_name}')
+    exp_path.mkdir(parents=True, exist_ok=True)
+    logger = setup_logging(exp_path, args)
 
     ds = args.ds
     dt = args.T / args.n_steps
     times = np.arange(0, args.T, dt)
-    exp_path = Path(f'data/{args.exp_name}')
-    exp_path.mkdir(parents=True, exist_ok=True)
-    logger = setup_logging(exp_path, args)
 
     # We want every dimension to share the same snapshots,
     # including all theoretical ts points
@@ -117,133 +268,52 @@ def main():
         path = exp_path / f"D{d}_N{args.n_samples}_T{int(args.T)}/"
         path.mkdir(parents=True, exist_ok=True)
         history_file = path / f"history.jbl"
-
-        # SDE Simulation
-        if not history_file.exists():
-            history = {}
-            x_current = torch.randn(d, args.n_samples)  # d x N
-            history[args.T] = x_current.T.clone().numpy()  # N x d
-
-            for step in tqdm(reversed(range(args.n_steps)), total=args.n_steps, desc=f"[D={d}] SDE"):
-                t = times[step]
-                x_current, _ = backward(x_t=x_current, t=t, dt=dt, mu_star=mu_star, std=std)
-                if step in snap_time_indices:
-                    history[t] = x_current.T.clone().numpy()
-            time_snaps = list(history.keys())
-            data_to_dump = {
-                "history": history,
-                "params": {
-                    **vars(args),
-                    "d": d,
-                    "ts_theoretical": t_s,
-                    "times_snapshots": time_snaps,
-                    "times": times
-                }
-            }
-            joblib.dump(data_to_dump, history_file, compress=3)
-        else:
-            logger.info(f"[D={d}] History found. Loading...")
-            history = joblib.load(history_file)["history"]
-            time_snaps = list(history.keys())
-
-        # Graph Construction
         ws_file = path / "Ws.jbl"
-        if not ws_file.exists():
-            knn_results = Parallel(n_jobs=args.threads, backend="threading")(
-                delayed(knn_job)(history[t], args.inject_edges, args.kernel)
-                for t in tqdm(time_snaps, desc=f"[D={d}] KNN Progress")
-            )
-
-            w_results = [w for *_, w in knn_results]
-            k_results = [k for k, *_ in knn_results]
-
-            results_dict = {
-                "Ws": w_results,
-                "ks": k_results,
-                "ts": time_snaps,
-                "kernel": args.kernel
-            }
-
-            if args.kernel == "gaussian":
-                sigma_results = [sigma for _, sigma, _ in knn_results]
-                results_dict["sigma"] = sigma_results
-
-            joblib.dump(results_dict, ws_file, compress=3)
-        else:
-            logger.info(f"[D={d}] Ws found. Loading...")
-            load_ws = joblib.load(ws_file)
-            w_results = load_ws["Ws"]
-            time_snaps = load_ws['ts']
-
-        # CTD Calculation
         ctd_file = path / "CTDs.jbl"
-        if not ctd_file.exists():
-            ctds = Parallel(n_jobs=args.threads)(
-                delayed(ctd_job)(W_i, args.laplacian)
-                for W_i in tqdm(w_results, total=len(w_results), desc=f"[D={d}] CTD Logic")
-            )
-
-            if args.norm_type == "log_global_scale_and_shift":
-
-                all_log_ctds = np.concatenate([np.log1p(triu_i) for  triu_i in ctds])
-                g_min = np.percentile(all_log_ctds, 1)
-                g_max = np.percentile(all_log_ctds, 95)
-                range_ = g_max - g_min
-
-                ctds_dict = {
-                    t: {
-                        'ctds': triu_i,
-                        'norm_ctds': (np.clip( np.log1p(np.array(triu_i)), g_min, g_max) - g_min) / range_
-                    }
-                             for t, triu_i in zip(time_snaps, ctds)
-                             }
-            else:
-                ctds_dict = {
-                    t: {'ctds': triu_i, 'norm_ctds': normalize(triu_i, args.norm_type)}
-                    for t, triu_i in zip(time_snaps, ctds)
-                }
-
-            joblib.dump({
-                "CTDs": ctds_dict,
-                "params": {
-                    "laplacian": args.laplacian,
-                    "normalization": args.norm_type,
-                    "ts": time_snaps
-                }
-            }, ctd_file, compress=3)
-        else:
-            logger.info(f"[D={d}] CTDs found. Loading...")
-            ctds_dict = joblib.load(ctd_file)["CTDs"]
-
-        # SAGD Distance Matrix
         sagd_file = path / "SAGD.jbl"
-        if not sagd_file.exists():
-            norm_ctds = [ctds_dict[t]['norm_ctds'] for t in time_snaps]
-            num_graphs = len(norm_ctds)
-            pairs = [(i, j) for i in range(num_graphs) for j in range(i + 1, num_graphs)]
 
-            distances = Parallel(n_jobs=args.threads)(
-                delayed(wasserstein_distance)(norm_ctds[i], norm_ctds[j])
-                for i, j in tqdm(pairs, desc=f"[D={d}] SAGD Matrix")
-            )
+        # 1. SDE Simulation
+        history = diffuse_job(
+            history_file=history_file,
+            dim=d,
+            args=args,
+            times=times,
+            dt=dt,
+            snap_time_indices=snap_time_indices,
+            mu_star=mu_star,
+            std=std,
+            ts_theoretical=t_s,
+            logger=logger
+        )
+        time_snaps = list(history.keys())
 
-            sagd_dist_matrix = np.zeros((num_graphs, num_graphs))
-            for (i, j), dist in zip(pairs, distances):
-                sagd_dist_matrix[i, j] = sagd_dist_matrix[j, i] = dist
-            joblib.dump(sagd_dist_matrix, sagd_file, compress=3)
-        else:
-            sagd_dist_matrix = joblib.load(sagd_file)
+        # 2. Graph Construction
+        w_results_list = construct_graph_job(
+            dim=d,
+            ws_file=ws_file,
+            args=args,
+            history=history
+        )
 
-        # SASNE embedding
-        sasne_file = path / "SASNE.jbl"
-        if not sasne_file.exists():
-            embedding, Z = SASNE(data=sagd_dist_matrix)
-            joblib.dump({
-                "embedding": embedding,
-                "Z": Z,
-                "D1": squareform(pdist(embedding)),
-                "D2": squareform(pdist(Z))
-            }, sasne_file, compress=3)
+        # 3. CTD Calculation
+        ctds_dict = ctds_job(
+            ctd_file=ctd_file,
+            args=args,
+            w_results=w_results_list,
+            time_snaps=time_snaps,
+            dim=d,
+            logger=logger
+        )
+
+        # 4. SAGD Distance Matrix
+        sagd_job(
+            sagd_file=sagd_file,
+            args=args,
+            ctds_dict=ctds_dict,
+            time_snaps=time_snaps,
+            dim=d
+        )
+
     logger.info('Done!')
 
 if __name__ == "__main__":
