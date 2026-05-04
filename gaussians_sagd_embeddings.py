@@ -76,7 +76,7 @@ def diffuse_job(
 ):
     if not history_file.exists():
         history = {}
-        x_current = torch.randn(d, args.n_samples)  # d x N
+        x_current = torch.randn(dim, args.n_samples)  # d x N
         history[args.T] = x_current.T.clone().numpy()  # N x d
 
         for step in tqdm(reversed(range(args.n_steps)), total=args.n_steps, desc=f"[D={dim}] SDE"):
@@ -88,7 +88,7 @@ def diffuse_job(
             "history": history,
             "params": {
                 **vars(args),
-                "d": d,
+                "dim": dim,
                 "ts_theoretical": ts_theoretical,
                 "times_snapshots": list(history.keys()),
                 "times": times
@@ -106,6 +106,7 @@ def construct_graph_job(
         ws_file: Path,
         args: argparse.Namespace,
         history: dict,
+        logger: logging.Logger,
 ):
     time_snaps = list(history.keys())
     if not ws_file.exists():
@@ -222,7 +223,7 @@ def parse_args():
     parser.add_argument("--laplacian", type=str, default="unnormalized")
     parser.add_argument("--norm_type", type=str, default="norm_wrt_volume",
                         choices=["norm_wrt_volume", "norm_wrt_avg_ctd", "scale_and_shift",
-                                 "log_global_scale_and_shift"])
+                                 "log_scale_and_shift", "log_global_scale_and_shift"])
     parser.add_argument("--inject_edges", action="store_true", default=True)
 
     parser.add_argument("--threads", type=int, default=20)
@@ -292,7 +293,8 @@ def main():
             dim=d,
             ws_file=ws_file,
             args=args,
-            history=history
+            history=history,
+            logger=logger
         )
 
         # 3. CTD Calculation
