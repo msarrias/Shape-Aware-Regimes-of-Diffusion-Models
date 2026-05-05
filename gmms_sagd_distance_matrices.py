@@ -12,6 +12,7 @@ from numpy import isclose
 import logging
 
 from ou_model import backward, theoretical_ts
+from clustering import cluster_distance_matrix
 from distances import CTD_matrix
 from stats import normalize, Kruglov_distance
 from adaptive_knn import AdaptiveKNNGraph
@@ -40,7 +41,7 @@ def ctd_job(
         w_result: np.ndarray,
         laplacian: str
 ):
-    C_Gi, _ = CTD_matrix(
+    C_Gi = CTD_matrix(
         W=w_result,
         laplacian_type=laplacian
     )
@@ -192,7 +193,9 @@ def sagd_job(
         time_snaps: list,
         dim: int,
         args: argparse.Namespace,
+        logger: logging.Logger
 ):
+    sagd_dist_matrix = None
     if not sagd_file.exists():
         norm_ctds = [ctds_dict[t]['norm_ctds'] for t in time_snaps]
         num_graphs = len(norm_ctds)
@@ -207,6 +210,29 @@ def sagd_job(
         for (i, j), dist in zip(pairs, distances):
             sagd_dist_matrix[i, j] = sagd_dist_matrix[j, i] = dist
         joblib.dump(sagd_dist_matrix, sagd_file, compress=3)
+
+    else: 
+        logger.info(f"[D={dim}] SAGD found. Loading...")
+        sagd_dist_matrix = joblib.load(sagd_file)
+    
+    return sagd_dist_matrix
+
+def clustering_job(sagd_dist_matrix: np.ndarray,
+                   dim: int, 
+                   output_file: Path, 
+                   args: argparse.Namespace,
+                   logger: logging.Logger):
+    time_intervals = None
+    if not output_file.exists():
+        logger.info(f"[D={dim}] Clustering SAGD matrix")
+        time_intervals = cluster_distance_matrix(distances=sagd_dist_matrix, 
+                                                 method="dp", 
+                                                 weight_exp=2.0,
+                                                 penalty_coeff=0.2)
+        logger.info(time_intervals)
+    else:
+        logger.info(f"[D={dim}] Clusters found. Loading...")
+        time_intervals = joblib.load(output_file)
 
 def parse_args():
     parser = argparse.ArgumentParser()
@@ -273,6 +299,7 @@ def main():
         ws_file = path / "Ws.jbl"
         ctd_file = path / "CTDs.jbl"
         sagd_file = path / "SAGD.jbl"
+        cluster_file = path / "clusters.jbl"
 
         # 1. SDE Simulation
         history = diffuse_job(
@@ -315,13 +342,21 @@ def main():
         )
 
         # 4. SAGD Distance Matrix
-        sagd_job(
+        sagd_dist_matrix = sagd_job(
             sagd_file=sagd_file,
             args=args,
             ctds_dict=ctds_dict,
             time_snaps=time_snaps,
-            dim=d
+            dim=d,
+            logger=logger
         )
+
+        # 5. Clustering
+        clustering_job(sagd_dist_matrix=sagd_dist_matrix,
+                       dim=d, 
+                       output_file=cluster_file,
+                       args=args,
+                       logger=logger)
 
     logger.info('Done!')
 

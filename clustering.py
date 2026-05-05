@@ -100,10 +100,10 @@ def segment_dp(
     return _backtrack(prev)
 
 
-def cluster_distance_matrix(distances: np.ndarray, method: str = "dp", weight_exp: float = 0.0):
+def cluster_distance_matrix(distances: np.ndarray, method: str = "dp", weight_exp: float = 0.0, penalty_coeff: float = 1.0):
     methods = ["dp"]
     if method == "dp":
-        return segment_dp(distances, penalty=0.1 * np.std(distances), weight_exp=weight_exp)
+        return segment_dp(distances, penalty=penalty_coeff * np.std(distances), weight_exp=weight_exp)
     else:
         raise ValueError(f"Only {methods} clustering methods are supported")
 
