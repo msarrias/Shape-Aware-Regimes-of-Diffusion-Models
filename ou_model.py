@@ -1,10 +1,14 @@
 import matplotlib.pyplot as plt
+import numba as nb
 import numpy as np
 import matplotlib as mpl
 from matplotlib import cm
 from mpl_toolkits.mplot3d import Axes3D
 import torch
 import sys
+
+from functools import partial
+from scipy import integrate
 
 # most code comes from here https://github.com/tbonnair/Dynamical-Regimes-of-Diffusion-Models
 def forward(x_0, t):
@@ -82,4 +86,40 @@ def theoretical_ts(mu_star, std, times):
     t_s_idx = np.abs(times - t_s).argmin()
     
     return t_s, t_s_idx
-    
+
+
+@nb.njit(error_model="numpy",fastmath=True)
+def gaussian(m, s, x):
+    return 1/np.sqrt(2*np.pi*s) * np.exp(-(x-m)**2 / 2 / s)
+
+@nb.njit(error_model="numpy",fastmath=True)
+def integrand(m, s, t, x):
+    dt = 1 - np.exp(-2*t)
+    gt = dt+s*np.exp(-2*t)
+    Gp = gaussian(m*np.exp(-t), gt, x)
+    Gm = gaussian(-m*np.exp(-t), gt, x)
+    itgrd = (Gp**2+Gm**2) / (Gp + Gm)
+    return itgrd
+
+
+def same_cluster_prob(dim, mu, std, times):
+    """
+    Estimates the probability that two clones will be grouped at the same cluster
+    :param dim: Data dimension 
+    :param mu: The cluster center vector is torch.ones(d) * args.mu
+    :param std: The standard deviation (internal variance) of the clusters.
+    :param times: The array of time steps used in the simulation.
+    """
+    phi = np.zeros(len(times))
+    m = mu * np.sqrt(dim)
+    for (it, t) in enumerate(times):
+        c = m*np.exp(-t)
+        x0 = -c-5*std
+        part = partial(integrand, m, std, t)
+        integral = integrate.quad(part, x0, -x0, epsrel=1e-4)[0]
+        if np.isnan(integral):
+            x0, x1, x2, x3 = -c-5*std, -c+5*std, c-5*std, c+5*std
+            integral = integrate.quad(part, x0, x1, epsrel=1e-4)[0]
+            integral += integrate.quad(part, x2, x3, epsrel=1e-4)[0]
+        phi[it] = 1/2*integral
+    return phi
