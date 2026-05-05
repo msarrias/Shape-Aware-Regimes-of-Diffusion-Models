@@ -195,7 +195,7 @@ def ctds_job(
             ctds_dict = {
                 t: {
                     'ctds': triu_i,
-                    'norm_ctds': (np.clip(np.log1p(np.array(triu_i)), g_min, g_max) - g_min) / range_
+                    'norm_ctds': (np.log1p(np.array(triu_i)) - g_min) / range_
                 }
                 for t, triu_i in zip(time_snaps, ctds)
             }
