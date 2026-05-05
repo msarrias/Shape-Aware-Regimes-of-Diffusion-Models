@@ -81,7 +81,7 @@ def diffuse_job(
 
         for step in tqdm(reversed(range(args.n_steps)), total=args.n_steps, desc=f"[D={dim}] SDE"):
             t = times[step]
-            x_current, _ = backward(x_t=x_current, t=t, dt=dt, mu_star=mu_star, std=std)
+            x_current, _ = backward(x_t=x_current, t=t, dt=dt, mu_star=mu_star, std=std, model=args.model)
             if step in snap_time_indices:
                 history[t] = x_current.T.clone().numpy()
         data_to_dump = {
@@ -263,8 +263,13 @@ def main():
     )
 
     for d in ds:
-        mu_star = torch.ones(d) * args.mu
-        std = 1.0
+        if args.data_model=="bimodal":
+            mu_star = torch.ones(d) * args.mu
+            std = 1.0
+        elif args.data_model=="hierarchical":
+            mu_star = centers()
+            std = torch.ones(6)
+            
         t_s, _ = theoretical_ts(mu_star, std, times)
 
         path = exp_path / f"D{d}_N{args.n_samples}_T{int(args.T)}/"
