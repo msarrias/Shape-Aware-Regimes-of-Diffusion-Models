@@ -18,7 +18,7 @@ from stats import normalize, Kruglov_distance
 from adaptive_knn import AdaptiveKNNGraph
 
 
-def setup_logging(exp_path, args):
+def setup_logging(exp_path, args) -> logging.Logger:
     log_file = exp_path / "settings.log"
 
     logging.basicConfig(
@@ -37,10 +37,37 @@ def setup_logging(exp_path, args):
     return logger
 
 
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser()
+
+    parser.add_argument("--seed", type=int, default=123456)
+    parser.add_argument("--n_samples", type=int, default=1000)
+    parser.add_argument("--n_steps", type=int, default=1000)
+    parser.add_argument("--T", type=float, default=10.0)
+    parser.add_argument("--mu", type=float, default=4.0)
+
+    parser.add_argument("--kernel", type=str, default="gaussian",
+                        choices=["gaussian", "inverse_sq_euclidean_d"])
+    parser.add_argument("--data-model", type=str, default="bimodal",
+                        choices=["bimodal", "hierarchical"])
+    parser.add_argument("--laplacian", type=str, default="unnormalized")
+    parser.add_argument("--norm_type", type=str, default="norm_wrt_volume",
+                        choices=["norm_wrt_volume", "norm_wrt_avg_ctd", "scale_and_shift",
+                                 "log_scale_and_shift", "log_global_scale_and_shift"])
+    parser.add_argument("--inject_edges", action="store_true", default=True)
+
+    parser.add_argument("--threads", type=int, default=20)
+    parser.add_argument("--exp_name", type=str, default="exp_04")
+    parser.add_argument("--ds", type=int, nargs="+", help="Explicit list of dimensions to run")
+
+    args = parser.parse_args()
+    return args
+
+
 def ctd_job(
         w_result: np.ndarray,
         laplacian: str
-):
+) -> np.ndarray:
     C_Gi = CTD_matrix(
         W=w_result,
         laplacian_type=laplacian
@@ -54,7 +81,7 @@ def knn_job(
         edges_to_inject: list,
         kernel: str,
         sigma: float=None
-):
+) -> np.ndarray:
     knn_obj = AdaptiveKNNGraph(
         data=data,
         edges_to_inject=edges_to_inject,
@@ -74,7 +101,7 @@ def diffuse_job(
         std: float,
         ts_theoretical: float,
         logger: logging.Logger,
-):
+) -> np.ndarray:
     if not history_file.exists():
         history = {}
         x_current = torch.randn(dim, args.n_samples)  # d x N
@@ -82,7 +109,13 @@ def diffuse_job(
 
         for step in tqdm(reversed(range(args.n_steps)), total=args.n_steps, desc=f"[D={dim}] SDE"):
             t = times[step]
-            x_current, _ = backward(x_t=x_current, t=t, dt=dt, mu_star=mu_star, std=std)
+            x_current, _ = backward(
+                x_t=x_current,
+                t=t,
+                dt=dt,
+                mu_star=mu_star,
+                std=std
+            )
             if step in snap_time_indices:
                 history[t] = x_current.T.clone().numpy()
         data_to_dump = {
@@ -145,7 +178,7 @@ def ctds_job(
         time_snaps: list,
         dim: int,
         logger: logging.Logger,
-):
+) -> dict:
     if not ctd_file.exists():
         ctds = Parallel(n_jobs=args.threads)(
             delayed(ctd_job)(W_i, args.laplacian)
@@ -194,8 +227,7 @@ def sagd_job(
         dim: int,
         args: argparse.Namespace,
         logger: logging.Logger
-):
-    sagd_dist_matrix = None
+) -> np.array:
     if not sagd_file.exists():
         norm_ctds = [ctds_dict[t]['norm_ctds'] for t in time_snaps]
         num_graphs = len(norm_ctds)
@@ -217,52 +249,25 @@ def sagd_job(
     
     return sagd_dist_matrix
 
-def clustering_job(sagd_dist_matrix: np.ndarray,
-                   dim: int,
-                   output_file: Path,
-                   args: argparse.Namespace,
-                   logger: logging.Logger):
-    breakpoints = None
+def clustering_job(
+        sagd_dist_matrix: np.ndarray,
+        dim: int,
+        output_file: Path,
+        logger: logging.Logger
+):
     if not output_file.exists():
         logger.info(f"[D={dim}] Clustering SAGD matrix")
-        breakpoints = cluster_distance_matrix(distances=sagd_dist_matrix, 
-                                              method="dp", 
-                                              weight_exp=2.0,
-                                              penalty_coeff=0.1)
+        breakpoints = cluster_distance_matrix(
+            distances=sagd_dist_matrix,
+            method="dp",
+            weight_exp=2.0,
+            penalty_coeff=0.1
+        )
         joblib.dump(breakpoints, output_file, compress=3)
-    else:
-        logger.info(f"[D={dim}] Breakpoints found. Loading...")
-        breakpoints = joblib.load(output_file)
 
-def parse_args():
-    parser = argparse.ArgumentParser()
-
-    parser.add_argument("--seed", type=int, default=123456)
-    parser.add_argument("--n_samples", type=int, default=1000)
-    parser.add_argument("--n_steps", type=int, default=1000)
-    parser.add_argument("--T", type=float, default=10.0)
-    parser.add_argument("--mu", type=float, default=4.0)
-
-    parser.add_argument("--kernel", type=str, default="gaussian",
-                        choices=["gaussian", "inverse_sq_euclidean_d"])
-    parser.add_argument("--data-model", type=str, default="bimodal",
-                        choices=["bimodal", "hierarchical"])
-    parser.add_argument("--laplacian", type=str, default="unnormalized")
-    parser.add_argument("--norm_type", type=str, default="norm_wrt_volume",
-                        choices=["norm_wrt_volume", "norm_wrt_avg_ctd", "scale_and_shift",
-                                 "log_scale_and_shift", "log_global_scale_and_shift"])
-    parser.add_argument("--inject_edges", action="store_true", default=True)
-
-    parser.add_argument("--threads", type=int, default=20)
-    parser.add_argument("--exp_name", type=str, default="exp_04")
-    parser.add_argument("--ds", type=int, nargs="+", help="Explicit list of dimensions to run")
-
-    args = parser.parse_args()
-    return args
 
 
 def main():
-
     args = parse_args()
     sys.setrecursionlimit(2000)
     torch.manual_seed(args.seed)
@@ -350,13 +355,13 @@ def main():
             dim=d,
             logger=logger
         )
-
         # 5. Clustering
-        clustering_job(sagd_dist_matrix=sagd_dist_matrix,
-                       dim=d, 
-                       output_file=cluster_file,
-                       args=args,
-                       logger=logger)
+        clustering_job(
+            sagd_dist_matrix=sagd_dist_matrix,
+            dim=d,
+            output_file=cluster_file,
+            logger=logger
+        )
 
     logger.info('Done!')
 
