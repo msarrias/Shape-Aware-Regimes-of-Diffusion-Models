@@ -1,20 +1,21 @@
 #!/bin/bash
 
-EXP_NAME="exp_01"
+EXP_NAME="exp_02"
 THREADS=20
 MU=4.0
 T=10.0
 SAMPLES=1000
 STEPS=1000
 SEED=123
+DS_LIST="2 3 4 5 6 10 15 20 25 30 35 40 45 50 256 1024 4096 16384"
 
 KERNEL="gaussian"
 LAPLACIAN="unnormalized"
-NORM="norm_wrt_avg_ctd"
-
-python gaussians_sagd_embeddings.py \
+NORM="log_scale_and_shift"
+MODEL="bimodal"
+python gmms_sagd_distance_matrices.py \
     --exp_name "$EXP_NAME" \
-    --ds $(seq 2 6) \
+    --ds "$DS_LIST" \
     --threads $THREADS \
     --mu $MU \
     --T $T \
@@ -22,6 +23,7 @@ python gaussians_sagd_embeddings.py \
     --n_steps $STEPS \
     --seed $SEED \
     --kernel "$KERNEL" \
+    --data-model "$MODEL" \
     --laplacian "$LAPLACIAN" \
     --norm_type "$NORM" \
     --inject_edges
