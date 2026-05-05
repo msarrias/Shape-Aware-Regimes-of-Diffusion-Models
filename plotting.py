@@ -5,8 +5,9 @@ import torch
 import seaborn as sns
 from matplotlib.animation import FuncAnimation
 from mpl_toolkits.mplot3d.art3d import Poly3DCollection
-from SASNE.RRP import RRP
+from RRP import RRP
 from matplotlib import pyplot as plt
+from mpl_toolkits.mplot3d import Axes3D
 
 
 def plot_data_distribution(
@@ -44,141 +45,6 @@ def plot_data_distribution(
     ax.set_ylim(-limit, limit)
     ax.set_aspect('equal')
     ax.grid(alpha=0.1)
-
-
-def create_cont_sasne_animation(
-        embedding,
-        time_snaps,
-        d,
-        ts_idx,
-        save_path
-):
-    fig, ax = plt.subplots(figsize=(6, 6))
-    
-    ax.plot(embedding[:, 0], embedding[:, 1], c='gray', alpha=0.15, zorder=1)
-    
-    scatter_head = ax.scatter([], [], c='red', s=100, edgecolors='white', zorder=6)
-    line_tail, = ax.plot([], [], c='blue', alpha=0.6, lw=2, zorder=5)
-    
-    ax.set_title(f"d={d}", fontsize=14)
-    ax.set_xlabel("SASNE1")
-    ax.set_ylabel("SASNE2")
-    ax.set_xlim(embedding[:, 0].min() - 0.7, embedding[:, 0].max() + 0.7)
-    ax.set_ylim(embedding[:, 1].min() - 0.7, embedding[:, 1].max() + 0.7)
-    
-    time_text = ax.text(0.05, 0.95, '', transform=ax.transAxes, 
-                        fontweight='bold', fontsize=12,
-                        bbox=dict(facecolor='white', alpha=0.8, edgecolor='none'))
-
-    milestones = {}
-
-    def init():
-        scatter_head.set_offsets(np.empty((0, 2)))
-        line_tail.set_data([], [])
-        time_text.set_text('')
-        return scatter_head, line_tail, time_text
-
-    def update(frame):
-        # Current position
-        x, y = embedding[frame, 0], embedding[frame, 1]
-        scatter_head.set_offsets([[x, y]])
-        
-        # Trailing tail
-        start_tail = max(0, frame - 10)
-        line_tail.set_data(embedding[start_tail:frame+1, 0], 
-                           embedding[start_tail:frame+1, 1])
-        
-        # Time Label
-        current_t = time_snaps[frame]
-        time_text.set_text(f"t = {current_t:.2f}")
-
-        # Speciation Pointer Logic
-        if frame >= ts_idx and 'ts' not in milestones:
-            milestones['ts'] = ax.annotate(
-                f'$t_s$', 
-                xy=(embedding[ts_idx, 0], embedding[ts_idx, 1]), 
-                xytext=(40, 40), textcoords='offset points',
-                arrowprops=dict(arrowstyle='->', color='darkcyan', lw=2),
-                bbox=dict(boxstyle="round,pad=0.3", fc="white", ec="darkcyan", alpha=0.8),
-                fontsize=10, fontweight='bold', color='darkcyan', zorder=10
-            )
-            # Change head color at speciation for visual feedback
-            scatter_head.set_color('darkcyan')
-
-        # Collect artists for blitting
-        return [scatter_head, line_tail, time_text] + list(milestones.values())
-
-    # repeat=False ensures it stops at t=0
-    ani = FuncAnimation(fig, update, frames=len(embedding),
-                        init_func=init, blit=True, interval=150, repeat=False)
-    
-    ani.save(save_path, writer='pillow', fps=5, metadata={'loop': 1})
-    plt.close()
-
-
-def create_animated_embedding(
-        embedding,
-        d,
-        ts_idx,
-        time_snaps,
-        save_path
-):
-    n_frames = len(embedding)
-    fig, ax = plt.subplots(figsize=(8, 6))
-    ax.set_xlim(embedding[:, 0].min() - 1.5, embedding[:, 0].max() + 1.5)
-    ax.set_ylim(embedding[:, 1].min() - 1.5, embedding[:, 1].max() + 1.5)
-    ax.set_title(f"d={d}", fontsize=14)
-    ax.set_xlabel("SASNE1")
-    ax.set_ylabel("SASNE2")
-
-    sc = ax.scatter([], [], c=[], cmap='viridis', s=25, alpha=0.8, vmin=0, vmax=n_frames)
-    time_text = ax.text(0.05, 0.95, '', transform=ax.transAxes, fontweight='bold')
-
-    milestones = {}
-
-    def add_pointer_ani(
-            ax,
-            index,
-            label,
-            color,
-            offset
-    ):
-        return ax.annotate(label, 
-                    xy=(embedding[index, 0], embedding[index, 1]), 
-                    xytext=offset, 
-                    textcoords='offset points',
-                    arrowprops=dict(arrowstyle='->', color=color, lw=2),
-                    bbox=dict(boxstyle="round,pad=0.3", fc="white", ec=color, alpha=0.8),
-                    fontsize=10, fontweight='bold', color=color, zorder=10)
-
-    def update(
-            frame
-    ):
-        current_data = embedding[:frame+1]
-        sc.set_offsets(current_data)
-        sc.set_array(np.arange(frame + 1))
-        current_t = time_snaps[frame]
-        if frame == ts_idx:
-            time_text.set_text(f"t = {current_t:.2f} * (Speciation)")
-            time_text.set_color('darkcyan') # Match the milestone color
-        else:
-            time_text.set_text(f"t = {current_t:.2f}")
-            time_text.set_color('black')
-            
-        # Annotation Logic
-        if frame == 0 and 'start' not in milestones:
-            milestones['start'] = add_pointer_ani(ax, 0, '$t=T$', 'red', (-80, 40))
-        
-        if frame == ts_idx and 'ts' not in milestones:
-            milestones['ts'] = add_pointer_ani(ax, ts_idx, '$t=t_s$', 'darkcyan', (40, 40))
-            
-        if frame == n_frames - 1 and 'end' not in milestones:
-            milestones['end'] = add_pointer_ani(ax, n_frames - 1, '$t=0$', 'orange', (20, -40))
-            
-        return [sc, time_text] + list(milestones.values())
-    ani = FuncAnimation(fig, update, frames=n_frames, interval=200, blit=False, repeat=False)
-    ani.save(save_path, writer='pillow', fps=5, savefig_kwargs={'facecolor':'white'}, metadata={'loop': 1})
-    plt.close()
 
 
 def plot_speciation_3d(
@@ -354,91 +220,7 @@ def plot_sasne_dimension_sweep(
     if save_path:
         plt.savefig(save_path, dpi=300, bbox_inches='tight')
     plt.show()
-
-def plot_sagd_heatmap_row(
-        W_list,
-        d_list,
-        time_snaps_vector,
-        ts_tuple_list,
-        save_fig_path=None
-):
-    """
-    Plots a row of SAGD heatmaps for a sweep of dimensions.
-    """
-    num_plots = len(W_list)
-    fig, axes = plt.subplots(1, num_plots, figsize=(6 * num_plots, 5))
-
-    if num_plots == 1:
-        axes = [axes]
-
-    n_samples = len(time_snaps_vector)
-    indices = np.linspace(0, n_samples - 1, 8, dtype=int)
-    tick_labels = [f"{time_snaps_vector[i]:.2f}" for i in indices]
-
-    for i, (W, d, ts_tuple) in enumerate(zip(W_list, d_list, ts_tuple_list)):
-        ax = axes[i]
-        ts, ts_idx = ts_tuple
-        # 1. Create the heatmap on the specific subplot axis
-        sns.heatmap(W, cmap='viridis', robust=True, ax=ax, cbar_kws={'shrink': 0.8})
-
-        # 2. Set Tick Labels
-        ax.set_xticks(indices + 0.5)
-        ax.set_xticklabels(tick_labels, rotation=45)
-        ax.set_yticks(indices + 0.5)
-        ax.set_yticklabels(tick_labels, rotation=0)
-
-        # 3. Draw vertical and horizontal lines for ts
-        ax.axvline(x=ts_idx + 0.5, color='red', linestyle='--', alpha=0.8, label=f'$t_s = {ts}$')
-        ax.axhline(y=ts_idx + 0.5, color='red', linestyle='--', alpha=0.8)
-
-        # 4. Formatting per subplot
-        ax.set_title(f"SAGD Distance Matrix (d={d})", fontsize=14)
-        ax.set_xlabel("Time", fontsize=12)
-        if i == 0:
-            ax.set_ylabel("Time", fontsize=12)
-
-        # Only add legend to the first plot to avoid clutter, or all if you prefer
-        if i == 0:
-            ax.legend(loc='upper left')
-
-    plt.tight_layout()
-    if save_fig_path:
-        plt.savefig(save_fig_path, dpi=300, bbox_inches='tight')
-    plt.show()
-
-
-def plot_sagd_heatmap(
-        W,
-        time_vector,
-        ts,
-        ts_idx,
-        d,
-        save_fig_path=None
-):
-    plt.figure(figsize=(10, 8))
-    ax = sns.heatmap(W, cmap='viridis', robust=True)
-    n_samples = len(time_vector)
-    indices = np.linspace(0, n_samples - 1, 8, dtype=int)
-
-    ax.set_xticks(indices + 0.5)
-    ax.set_xticklabels([f"{time_vector[i]:.2f}" for i in indices], rotation=45)
-    ax.set_yticks(indices + 0.5)
-    ax.set_yticklabels([f"{time_vector[i]:.2f}" for i in indices], rotation=0)
-
-    # Draw vertical and horizontal lines at ts
-    ts = round(ts, 2)
-    ax.axvline(x=ts_idx + 0.5, color='red', linestyle='--', alpha=0.8, label=f'$t_s = {ts}$')
-    ax.axhline(y=ts_idx + 0.5, color='red', linestyle='--', alpha=0.8)
-
-    plt.title(f"SAGD Distance Matrix (d={d})", fontsize=14)
-    plt.xlabel("Time", fontsize=12)
-    plt.ylabel("Time", fontsize=12)
-    plt.legend(loc='upper left')
-
-    plt.tight_layout()
-    if save_fig_path:
-        plt.savefig(save_fig_path, dpi=300, bbox_inches='tight')
-    plt.show()
+    
 
 def plot_full_sasne_dashboard(
         sasne_results,
@@ -512,4 +294,62 @@ def plot_full_sasne_dashboard(
     plt.tight_layout()
     if save_path:
         plt.savefig(save_path, dpi=300, bbox_inches='tight')
+    plt.show()
+
+
+def plot_sagd_heatmap_row(
+        W_list,
+        d_list,
+        time_snaps_vector_list,
+        ts_tuple_list,
+        save_fig_path=None
+):
+    num_plots = len(W_list)
+    max_cols = 6
+    num_rows = (num_plots + max_cols - 1) // max_cols
+    num_cols = min(num_plots, max_cols)
+
+    fig, axes = plt.subplots(num_rows, num_cols, figsize=(5 * num_cols, 5 * num_rows))
+    axes_flat = axes.flatten() if num_plots > 1 else [axes]
+
+    for i, (W, d, ts_tuple, time_snaps_vector) in enumerate(zip(W_list, d_list, ts_tuple_list, time_snaps_vector_list)):
+        ax_heat = axes_flat[i]
+        ts, ts_idx = ts_tuple
+        
+        # # 1. Normalize current matrix to 0-1
+        # W_min, W_max = W.min(), W.max()
+        # # Handle cases where min might equal max to avoid division by zero
+        # W_norm = (W - W_min) / (W_max - W_min) if W_max > W_min else W - W_min
+        W_norm = np.clip(W / np.percentile(W, 95), 0, 1)
+    
+        n_samples = len(time_snaps_vector)
+        heat_indices = np.linspace(0, n_samples - 1, 8, dtype=int)
+        tick_labels = [f"{time_snaps_vector[idx]:.2f}" for idx in heat_indices]
+        
+        # 2. Plot with a fixed 0-1 colorbar for consistent relative comparison
+
+        sns.heatmap(W_norm, cmap='viridis', ax=ax_heat, vmin=0, vmax=1, cbar_kws={'shrink': 0.8})
+            # Heatmap Ticks
+        ax_heat.set_xticks(heat_indices + 0.5)
+        ax_heat.set_xticklabels(tick_labels, rotation=45)
+        ax_heat.set_yticks(heat_indices + 0.5)
+        ax_heat.set_yticklabels(tick_labels, rotation=0)
+        ax_heat.set_xlabel("Time")
+
+        # Red Speciation Lines
+        ax_heat.axvline(x=ts_idx + 0.5, color='red', linestyle='--', alpha=0.8, label=f'$t_s = {ts:.2f}$')
+        ax_heat.axhline(y=ts_idx + 0.5, color='red', linestyle='--', alpha=0.8)
+    
+        ax_heat.set_title(f"d={d}", fontsize=16)
+        if i % max_cols == 0: 
+            ax_heat.set_ylabel("Time", fontsize=12)
+        ax_heat.legend(loc='upper left')
+
+    # Delete unused axes
+    for j in range(i + 1, len(axes_flat)): 
+        fig.delaxes(axes_flat[j])
+
+    plt.tight_layout()
+    if save_fig_path: 
+        plt.savefig(save_fig_path, dpi=300)
     plt.show()
