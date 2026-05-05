@@ -8,20 +8,17 @@ class AdaptiveKNNGraph:
             self,
             data: np.ndarray,
             min_k: int = 5,
-            inject_edges=True,
-            perc=0.02,
+            edges_to_inject: list = [],
             kernel='gaussian'
     ):
         self.data = data
         self.min_k = min_k
         self.dist_matrix = squareform(pdist(data, metric='euclidean'))
         self.n_samples = len(self.dist_matrix)
-        self.inject_edges = inject_edges
         self.kernel = kernel
-        if self.inject_edges:
+        if edges_to_inject is not None and len(edges_to_inject) > 0:
             self.true_dist_matrix = self.dist_matrix.copy()
-            self.perc = perc
-            self.inject_random_edges()
+            self.inject_random_edges(edges_to_inject)
         else:
             self.true_dist_matrix = self.dist_matrix
         self.sorted_ind = np.argsort(self.dist_matrix, axis=0)
@@ -29,11 +26,9 @@ class AdaptiveKNNGraph:
         self.sigma = None
 
     def inject_random_edges(
-            self
+            self,
+            pairs
     ):
-        num_nodes = int(self.n_samples * self.perc)
-        pairs = np.random.permutation(self.n_samples)[:num_nodes].reshape(-1, 2)
-
         for vi, vj in pairs:
             self.dist_matrix[vi, vj] = 0.0
             self.dist_matrix[vj, vi] = 0.0

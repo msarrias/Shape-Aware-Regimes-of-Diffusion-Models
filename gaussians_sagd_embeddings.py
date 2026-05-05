@@ -50,13 +50,13 @@ def ctd_job(
 
 def knn_job(
         data: np.ndarray,
-        inject_edges: bool,
+        edges_to_inject: list,
         kernel: str,
         sigma: float=None
 ):
     knn_obj = AdaptiveKNNGraph(
         data=data,
-        inject_edges=inject_edges,
+        edges_to_inject=edges_to_inject,
         kernel=kernel
     )
     w_matrix = knn_obj.compute_W(sigma=sigma)
@@ -106,12 +106,13 @@ def construct_graph_job(
         ws_file: Path,
         args: argparse.Namespace,
         history: dict,
+        edges_to_inject: list,
         logger: logging.Logger,
 ):
     time_snaps = list(history.keys())
     if not ws_file.exists():
         knn_results = Parallel(n_jobs=args.threads, backend="threading")(
-            delayed(knn_job)(history[t], args.inject_edges, args.kernel)
+            delayed(knn_job)(history[t], edges_to_inject, args.kernel)
             for t in tqdm(time_snaps, desc=f"[D={dim}] KNN Progress")
         )
         w_results = [w for *_, w in knn_results]
@@ -289,11 +290,17 @@ def main():
         time_snaps = list(history.keys())
 
         # 2. Graph Construction
+        edges_to_inject = []
+        if args.inject_edges:
+            num_nodes = int(args.n_samples * 0.02)
+            edges_to_inject = np.random.permutation(args.n_samples)[:num_nodes].reshape(-1, 2)
+
         w_results_list = construct_graph_job(
             dim=d,
             ws_file=ws_file,
             args=args,
             history=history,
+            edges_to_inject=edges_to_inject,
             logger=logger
         )
 
