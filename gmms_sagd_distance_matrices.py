@@ -218,21 +218,21 @@ def sagd_job(
     return sagd_dist_matrix
 
 def clustering_job(sagd_dist_matrix: np.ndarray,
-                   dim: int, 
-                   output_file: Path, 
+                   dim: int,
+                   output_file: Path,
                    args: argparse.Namespace,
                    logger: logging.Logger):
-    time_intervals = None
+    breakpoints = None
     if not output_file.exists():
         logger.info(f"[D={dim}] Clustering SAGD matrix")
-        time_intervals = cluster_distance_matrix(distances=sagd_dist_matrix, 
-                                                 method="dp", 
-                                                 weight_exp=2.0,
-                                                 penalty_coeff=0.2)
-        logger.info(time_intervals)
+        breakpoints = cluster_distance_matrix(distances=sagd_dist_matrix, 
+                                              method="dp", 
+                                              weight_exp=2.0,
+                                              penalty_coeff=0.1)
+        joblib.dump(breakpoints, output_file, compress=3)
     else:
-        logger.info(f"[D={dim}] Clusters found. Loading...")
-        time_intervals = joblib.load(output_file)
+        logger.info(f"[D={dim}] Breakpoints found. Loading...")
+        breakpoints = joblib.load(output_file)
 
 def parse_args():
     parser = argparse.ArgumentParser()

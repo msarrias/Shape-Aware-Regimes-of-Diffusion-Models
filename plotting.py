@@ -6,7 +6,7 @@ import seaborn as sns
 from matplotlib.animation import FuncAnimation
 from mpl_toolkits.mplot3d.art3d import Poly3DCollection
 from mpl_toolkits.axes_grid1 import make_axes_locatable
-from SASNE.RRP import RRP
+# from SASNE.RRP import RRP
 from matplotlib import pyplot as plt
 
 
@@ -555,14 +555,14 @@ def _draw_sagd_heatmap_with_prob(
     ax_hm.set_yticklabels(tick_labels, rotation=0)
 
     ts_r = round(ts, 2)
-    ax_hm.axvline(x=ts_idx + 0.5, color='red', linestyle='--', alpha=0.8, label=f'$t_s = {ts_r}$')
+    ax_hm.axvline(x=ts_idx + 0.5, color='red', linestyle='--', alpha=0.8, label=f'$t_s$')
     ax_hm.axhline(y=ts_idx + 0.5, color='red', linestyle='--', alpha=0.8)
 
     if tsagd is not None and tsagd_idx is not None:
         tsagd_r = round(tsagd, 2)
-        ax_hm.axvline(x=tsagd_idx + 0.5, color='green', linestyle='--', alpha=0.8,
-                      label=f'$t_{{SAGD}} = {tsagd_r}$')
-        ax_hm.axhline(y=tsagd_idx + 0.5, color='green', linestyle='--', alpha=0.8)
+        ax_hm.axvline(x=tsagd_idx + 0.5, color='orange', linestyle='--', alpha=0.8,
+                      label=f'$t_{{SAGD}}$')
+        ax_hm.axhline(y=tsagd_idx + 0.5, color='orange', linestyle='--', alpha=0.8)
 
     ax_hm.set_xlabel("Time", fontsize=12)
     if show_ylabel:
@@ -580,7 +580,7 @@ def _draw_sagd_heatmap_with_prob(
     ax_prob.plot(x_positions, probs, color='steelblue', lw=1.5)
     ax_prob.axvline(x=ts_idx + 0.5, color='red', linestyle='--', alpha=0.8)
     if tsagd is not None and tsagd_idx is not None:
-        ax_prob.axvline(x=tsagd_idx + 0.5, color='green', linestyle='--', alpha=0.8)
+        ax_prob.axvline(x=tsagd_idx + 0.5, color='orange', linestyle='--', alpha=0.8)
     ax_prob.set_ylim(0.48, 1.02)
     ax_prob.tick_params(axis='x', which='both', bottom=False, labelbottom=False)
     ax_prob.set_ylabel("φ(t)", fontsize=12)
@@ -671,6 +671,52 @@ def plot_sagd_heatmap_row_with_prob(
             show_legend=(i == 0),
         )
 
+    if save_fig_path:
+        plt.savefig(save_fig_path, dpi=300, bbox_inches='tight')
+    plt.show()
+
+def plot_breakpoint_and_speciation(
+        d_list,
+        ts_tuple_list,
+        tsagd_tuple_list,
+        mu,
+        std,
+        save_fig_path=None,
+):
+    """
+    Plot ``1 - φ(t_s)`` and ``1 - φ(t_SAGD)`` across dimensions on a
+    log-scale y-axis.
+    """
+    from ou_model import same_cluster_prob
+
+    phi_ts = np.zeros(len(d_list))
+    phi_tsagd = np.zeros(len(d_list))
+    for i, (d, ts_tuple, tsagd_tuple) in enumerate(
+            zip(d_list, ts_tuple_list, tsagd_tuple_list)):
+        ts, _ = ts_tuple
+        tsagd, _ = tsagd_tuple
+        phi_ts[i] = same_cluster_prob(d, mu, std, np.array([ts]))[0]
+        phi_tsagd[i] = same_cluster_prob(d, mu, std, np.array([tsagd]))[0]
+
+    fig, ax = plt.subplots(figsize=(8, 6))
+    ax.plot(d_list, 1 - phi_ts, marker='o', color='red',
+            label=r'$1 - φ(t_s)$')
+    ax.plot(d_list, 1 - phi_tsagd, marker='s', color='orange',
+            label=r'$1 - φ(t_{SAGD})$')
+    ax.set_yscale('log')
+    ax.set_xscale('log', base=2)
+    ax.set_xlim(min(d_list), max(d_list))
+    ax.set_xticks(list(d_list))
+    ax.set_xticklabels([str(d) for d in d_list])
+    ax.minorticks_off()
+    ax.set_xlabel('Dimension', fontsize=12)
+    ax.set_ylabel(r'$1 - φ(t)$', fontsize=12)
+    ax.set_title('Same-cluster probability at $t_s$ and $t_{SAGD}$',
+                 fontsize=14)
+    ax.legend()
+    ax.grid(True, which='both', alpha=0.3)
+
+    plt.tight_layout()
     if save_fig_path:
         plt.savefig(save_fig_path, dpi=300, bbox_inches='tight')
     plt.show()

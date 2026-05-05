@@ -79,31 +79,33 @@ def _run_dp(
     return dp, prev, M
 
 
-def _backtrack(prev: np.ndarray) -> list[tuple[int, int]]:
-    segments: list[tuple[int, int]] = []
+def _backtrack(prev: np.ndarray) -> list[int]:
+    breakpoints: list[int] = []
     t = len(prev) - 1
     while t > 0:
         k = int(prev[t])
-        segments.append((k, t))
+        breakpoints.append(k)
         t = k
-    segments.reverse()
-    return segments
+    breakpoints.reverse()
+    return breakpoints[1:]
 
 
-def segment_dp(
+def dp_clustering(
     D: np.ndarray,
     penalty: np.floating[Any],
     weight_exp: float = 0.0,
-) -> list[tuple[int, int]]:
+) -> list[int]:
     logging.debug("Penalty: {}".format(penalty))
     _, prev, _ = _run_dp(D, float(penalty), weight_exp=weight_exp)
     return _backtrack(prev)
 
-
-def cluster_distance_matrix(distances: np.ndarray, method: str = "dp", weight_exp: float = 0.0, penalty_coeff: float = 1.0):
-    methods = ["dp"]
+def cluster_distance_matrix(distances: np.ndarray, 
+                            method: str = "dp", 
+                            weight_exp: float = 0.0, 
+                            penalty_coeff: float = 1.0) -> list[int]:
+    methods = ["dp", "rupture"]
     if method == "dp":
-        return segment_dp(distances, penalty=penalty_coeff * np.std(distances), weight_exp=weight_exp)
+        return dp_clustering(distances, penalty=penalty_coeff * np.std(distances), weight_exp=weight_exp)
     else:
         raise ValueError(f"Only {methods} clustering methods are supported")
 
