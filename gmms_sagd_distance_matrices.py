@@ -201,7 +201,14 @@ def ctds_job(
             }
         else:
             ctds_dict = {
-                t: {'ctds': triu_i, 'norm_ctds': normalize(triu_i, args.norm_type)}
+                t: {
+                    'ctds': triu_i,
+                    'norm_ctds': normalize(
+                        list_values=triu_i,
+                        norm_type=args.norm_type,
+                        Vol=np.sum(triu_i) if args.norm_type == "norm_wrt_volume" else None
+                    )
+                }
                 for t, triu_i in zip(time_snaps, ctds)
             }
 
