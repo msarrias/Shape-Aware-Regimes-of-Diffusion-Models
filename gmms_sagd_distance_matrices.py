@@ -14,7 +14,7 @@ import logging
 from ou_model import backward, theoretical_ts
 from clustering import cluster_distance_matrix
 from distances import CTD_matrix
-from stats import normalize, Kruglov_distance
+from stats import normalize
 from adaptive_knn import AdaptiveKNNGraph
 
 
@@ -54,7 +54,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--norm_type", type=str, default="norm_wrt_volume",
                         choices=["norm_wrt_volume", "norm_wrt_avg_ctd", "scale_and_shift",
                                  "log_scale_and_shift", "log_global_scale_and_shift"])
-    parser.add_argument("--inject_edges", action="store_true", default=True)
+    parser.add_argument("--inject_edges", action="store_true", default=False)
+    parser.add_argument("--clipping", action="store_true", default=False)
 
     parser.add_argument("--threads", type=int, default=20)
     parser.add_argument("--exp_name", type=str, default="exp_04")
@@ -90,6 +91,7 @@ def knn_job(
     w_matrix = knn_obj.compute_W(sigma=sigma)
     return knn_obj.k, (knn_obj.sigma if kernel == 'gaussian' else None), w_matrix
 
+
 def diffuse_job(
         history_file: Path,
         dim: int,
@@ -106,7 +108,6 @@ def diffuse_job(
         history = {}
         x_current = torch.randn(dim, args.n_samples)  # d x N
         history[args.T] = x_current.T.clone().numpy()  # N x d
-
         for step in tqdm(reversed(range(args.n_steps)), total=args.n_steps, desc=f"[D={dim}] SDE"):
             t = times[step]
             x_current, _ = backward(
@@ -134,6 +135,7 @@ def diffuse_job(
         history = joblib.load(history_file)["history"]
 
     return history
+
 
 def construct_graph_job(
         dim:int,
@@ -184,33 +186,20 @@ def ctds_job(
             delayed(ctd_job)(W_i, args.laplacian)
             for W_i in tqdm(w_results, total=len(w_results), desc=f"[D={dim}] CTD Logic")
         )
-
+        all_log_ctds = []
         if args.norm_type == "log_global_scale_and_shift":
-
             all_log_ctds = np.concatenate([np.log1p(triu_i) for triu_i in ctds])
-            g_min = np.percentile(all_log_ctds, 1)
-            g_max = np.percentile(all_log_ctds, 95)
-            range_ = g_max - g_min
-
-            ctds_dict = {
-                t: {
-                    'ctds': triu_i,
-                    'norm_ctds': (np.log1p(np.array(triu_i)) - g_min) / range_
-                }
-                for t, triu_i in zip(time_snaps, ctds)
-            }
-        else:
-            ctds_dict = {
-                t: {
-                    'ctds': triu_i,
-                    'norm_ctds': normalize(
-                        list_values=triu_i,
-                        norm_type=args.norm_type,
-                        Vol=np.sum(triu_i) if args.norm_type == "norm_wrt_volume" else None
-                    )
-                }
-                for t, triu_i in zip(time_snaps, ctds)
-            }
+        ctds_dict = {
+            t: {
+                'ctds': triu_i,
+                'norm_ctds': normalize(
+                    list_values=triu_i,
+                    norm_type=args.norm_type,
+                    global_list_values=all_log_ctds,
+                    clipping=args.clipping
+                )}
+            for t, triu_i in zip(time_snaps, ctds)
+        }
 
         joblib.dump({
             "CTDs": ctds_dict,
@@ -228,12 +217,12 @@ def ctds_job(
 
 
 def sagd_job(
-        sagd_file:Path,
-        ctds_dict: dict,
-        time_snaps: list,
-        dim: int,
-        args: argparse.Namespace,
-        logger: logging.Logger
+    sagd_file: Path,
+    ctds_dict: dict,
+    time_snaps: list,
+    dim: int,
+    args: argparse.Namespace,
+    logger: logging.Logger
 ) -> np.array:
     if not sagd_file.exists():
         norm_ctds = [ctds_dict[t]['norm_ctds'] for t in time_snaps]
@@ -250,11 +239,12 @@ def sagd_job(
             sagd_dist_matrix[i, j] = sagd_dist_matrix[j, i] = dist
         joblib.dump(sagd_dist_matrix, sagd_file, compress=3)
 
-    else: 
+    else:
         logger.info(f"[D={dim}] SAGD found. Loading...")
         sagd_dist_matrix = joblib.load(sagd_file)
-    
+
     return sagd_dist_matrix
+
 
 def clustering_job(
         sagd_dist_matrix: np.ndarray,
