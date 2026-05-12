@@ -152,52 +152,58 @@ def plot_speciation_3d(
 def plot_sagd_heatmap_row(
         W_list,
         d_list,
-        time_snaps_vector,
+        time_snaps_vector_list,
         ts_tuple_list,
         save_fig_path=None
 ):
-    """
-    Plots a row of SAGD heatmaps for a sweep of dimensions.
-    """
     num_plots = len(W_list)
-    fig, axes = plt.subplots(1, num_plots, figsize=(6 * num_plots, 5))
+    max_cols = 6
+    num_rows = (num_plots + max_cols - 1) // max_cols
+    num_cols = min(num_plots, max_cols)
 
-    if num_plots == 1:
-        axes = [axes]
+    fig, axes = plt.subplots(num_rows, num_cols, figsize=(5 * num_cols, 5 * num_rows))
+    axes_flat = axes.flatten() if num_plots > 1 else [axes]
 
-    n_samples = len(time_snaps_vector)
-    indices = np.linspace(0, n_samples - 1, 8, dtype=int)
-    tick_labels = [f"{time_snaps_vector[i]:.2f}" for i in indices]
-
-    for i, (W, d, ts_tuple) in enumerate(zip(W_list, d_list, ts_tuple_list)):
-        ax = axes[i]
+    for i, (W, d, ts_tuple, time_snaps_vector) in enumerate(zip(W_list, d_list, ts_tuple_list, time_snaps_vector_list)):
+        ax_heat = axes_flat[i]
         ts, ts_idx = ts_tuple
-        # 1. Create the heatmap on the specific subplot axis
-        sns.heatmap(W, cmap='viridis', robust=True, ax=ax, cbar_kws={'shrink': 0.8})
 
-        # 2. Set Tick Labels
-        ax.set_xticks(indices + 0.5)
-        ax.set_xticklabels(tick_labels, rotation=45)
-        ax.set_yticks(indices + 0.5)
-        ax.set_yticklabels(tick_labels, rotation=0)
+        ## 1. Normalize current matrix to 0-1
+        # W_min, W_max = W.min(), W.max()
+        ## Handle cases where min might equal max to avoid division by zero
+        # W_norm = (W - W_min) / (W_max - W_min) if W_max > W_min else W - W_min
+        W_norm = np.clip(W / np.percentile(W, 95), 0, 1)
 
-        # 3. Draw vertical and horizontal lines for ts
-        ax.axvline(x=ts_idx + 0.5, color='red', linestyle='--', alpha=0.8, label=f'$t_s = {ts}$')
-        ax.axhline(y=ts_idx + 0.5, color='red', linestyle='--', alpha=0.8)
+        n_samples = len(time_snaps_vector)
+        heat_indices = np.linspace(0, n_samples - 1, 8, dtype=int)
+        tick_labels = [f"{time_snaps_vector[idx]:.2f}" for idx in heat_indices]
 
-        # 4. Formatting per subplot
-        ax.set_title(f"SAGD Distance Matrix (d={d})", fontsize=14)
-        ax.set_xlabel("Time", fontsize=12)
-        if i == 0:
-            ax.set_ylabel("Time", fontsize=12)
+        # 2. Plot with a fixed 0-1 colorbar for consistent relative comparison
 
-        # Only add legend to the first plot to avoid clutter, or all if you prefer
-        if i == 0:
-            ax.legend(loc='upper left')
+        sns.heatmap(W_norm, cmap='viridis', ax=ax_heat, vmin=0, vmax=1, cbar_kws={'shrink': 0.8})
+        # Heatmap Ticks
+        ax_heat.set_xticks(heat_indices + 0.5)
+        ax_heat.set_xticklabels(tick_labels, rotation=45)
+        ax_heat.set_yticks(heat_indices + 0.5)
+        ax_heat.set_yticklabels(tick_labels, rotation=0)
+        ax_heat.set_xlabel("Time")
+
+        # Red Speciation Lines
+        ax_heat.axvline(x=ts_idx + 0.5, color='red', linestyle='--', alpha=0.8, label=f'$t_s = {ts:.2f}$')
+        ax_heat.axhline(y=ts_idx + 0.5, color='red', linestyle='--', alpha=0.8)
+
+        ax_heat.set_title(f"d={d}", fontsize=16)
+        if i % max_cols == 0:
+            ax_heat.set_ylabel("Time", fontsize=12)
+        ax_heat.legend(loc='upper left')
+
+    # Delete unused axes
+    for j in range(i + 1, len(axes_flat)):
+        fig.delaxes(axes_flat[j])
 
     plt.tight_layout()
     if save_fig_path:
-        plt.savefig(save_fig_path, dpi=300, bbox_inches='tight')
+        plt.savefig(save_fig_path, dpi=300)
     plt.show()
 
 
