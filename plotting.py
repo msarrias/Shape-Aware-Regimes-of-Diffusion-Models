@@ -1,6 +1,7 @@
 # Gemini wrote this for me.
 import numpy as np
 from matplotlib import cm
+from matplotlib.colors import LinearSegmentedColormap
 import torch
 import seaborn as sns
 from matplotlib.animation import FuncAnimation
@@ -241,7 +242,7 @@ def plot_sagd_heatmap(
     plt.show()
 
 
-# Three plotting functions below were generated with Claude
+# The plotting functions below were generated with Claude
 def _draw_sagd_heatmap_with_prob(
         ax_hm,
         W,
@@ -449,3 +450,107 @@ def plot_breakpoint_and_speciation(
     if save_fig_path:
         plt.savefig(save_fig_path, dpi=300, bbox_inches='tight')
     plt.show()
+
+
+def extended_gray_coolwarm():
+    """Coolwarm-style colormap with a flat neutral-gray plateau in [0.25, 0.75]."""
+    return LinearSegmentedColormap.from_list(
+        "extended_gray_coolwarm",
+        [
+            (0.00, (0.23, 0.30, 0.75)),
+            (0.25, (0.78, 0.78, 0.78)),
+            (0.75, (0.78, 0.78, 0.78)),
+            (1.00, (0.71, 0.02, 0.15)),
+        ],
+    )
+
+
+def plot_state_and_ctd_frame(
+    step_idx,
+    history_list,
+    norm_ctds_list,
+    time_snaps,
+    mu,
+    std,
+    fig=None,
+    axes=None,
+    scatter_lim=None,
+    ctd_bins=51,
+    ctd_xlim=(0.0, 1.0),
+    ctd_ylim=None,
+    show=True,
+    save_fig_path=None,
+):
+    """
+    Render a single frame with:
+      Left  - data distribution at t = time_snaps[step_idx], colored by
+              ``pos_cluster_prob`` using an extended-gray coolwarm colormap.
+              Gray in [0.25, 0.75]; blue for p < 0.25; red for p > 0.75.
+      Right - normalized CTD distribution at the same t.
+
+    Pass existing ``fig`` and ``axes`` (length-2) to reuse them across frames.
+    """
+    from ou_model import pos_cluster_prob
+
+    data = np.asarray(history_list[step_idx])
+    n, d = data.shape
+    t = float(time_snaps[step_idx])
+
+    y = torch.as_tensor(data, dtype=torch.float32).T
+    probs = pos_cluster_prob(y, t=t, dim=d, mu=mu, std=std)
+    if torch.is_tensor(probs):
+        probs = probs.detach().cpu().numpy()
+    probs = np.asarray(probs)
+
+    if d == 2:
+        xy = data
+        xlabel, ylabel = "$x_1$", "$x_2$"
+    else:
+        raise ValueError("Only d = 2 is supported for this plot")
+
+    created_fig = False
+    if axes is None:
+        fig, axes = plt.subplots(1, 2, figsize=(12, 5))
+        created_fig = True
+    ax_left, ax_right = axes
+    ax_left.clear()
+    ax_right.clear()
+
+    cmap = extended_gray_coolwarm()
+    sc = ax_left.scatter(
+        xy[:, 0], xy[:, 1],
+        c=probs, cmap=cmap, vmin=0.0, vmax=1.0,
+        s=25, alpha=0.85, edgecolors='none',
+    )
+    if scatter_lim is not None:
+        ax_left.set_xlim(*scatter_lim)
+        ax_left.set_ylim(*scatter_lim)
+    ax_left.set_xlabel(xlabel)
+    ax_left.set_ylabel(ylabel)
+    ax_left.set_title(f"Data at t = {t:.2f}  (d = {d})")
+    ax_left.set_aspect('equal', adjustable='datalim')
+    ax_left.grid(alpha=0.15)
+
+    if created_fig:
+        cb = fig.colorbar(sc, ax=ax_left, fraction=0.046, pad=0.04)
+        cb.set_label(r"$P(+\mu \mid x_t)$")
+
+    ctd_vals = np.asarray(norm_ctds_list[step_idx])
+    bins = np.linspace(ctd_xlim[0], ctd_xlim[1], ctd_bins)
+    ax_right.hist(
+        ctd_vals, bins=bins, density=True,
+        color='darkcyan', edgecolor='black', alpha=0.7,
+    )
+    ax_right.set_xlim(*ctd_xlim)
+    if ctd_ylim is not None:
+        ax_right.set_ylim(*ctd_ylim)
+    ax_right.set_xlabel("Normalized CTD")
+    ax_right.set_ylabel("Density")
+    ax_right.set_title(f"CTD distribution at t = {t:.2f}")
+    ax_right.grid(alpha=0.15)
+
+    if save_fig_path:
+        fig.savefig(save_fig_path, dpi=200, bbox_inches='tight')
+    if show and created_fig:
+        plt.show()
+    return fig, (ax_left, ax_right)

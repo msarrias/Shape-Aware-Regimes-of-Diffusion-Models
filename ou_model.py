@@ -123,3 +123,20 @@ def same_cluster_prob(dim, mu, std, times):
             integral += integrate.quad(part, x2, x3, epsrel=1e-4)[0]
         phi[it] = 1/2*integral
     return phi
+
+
+def pos_cluster_prob(y, t, dim, mu, std):
+    """
+    Calculates the probability that the backward process ends in +mu center 
+    knowing that it was in y in given time t
+    :param dim: Data dimension 
+    :param mu: The cluster center vector is torch.ones(d) * args.mu
+    :param std: The standard deviation (internal variance) of the clusters.
+    :param times: The array of time steps used in the simulation.
+    """
+    delta_t = 1 - np.exp(-2*t)
+    Gamma_t = delta_t + std**2*np.exp(-2*t)
+    mu_vec = torch.ones(dim) * mu
+    y_m = torch.matmul(mu_vec, y)
+    x = 2 * np.exp(-t) / Gamma_t * y_m
+    return 1 / (1 + np.exp(-x))

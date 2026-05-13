@@ -113,12 +113,11 @@ def cluster_distance_matrix(distances: np.ndarray,
 # This function was generated with Claude Code for debugging purposes
 def plot_segment_dp(
     D: np.ndarray,
-    penalty: Optional[float] = None,
+    penalty_coeff: float = 1.0,
     weight_exp: float = 0.0,
     ax=None,
 ):
-    eff_penalty: float = float(penalty) if penalty is not None else float(0.5 * np.std(D))
-
+    eff_penalty: float = float(np.std(D)) * penalty_coeff
     n = D.shape[0]
     dp, prev, M = _run_dp(D, eff_penalty, weight_exp=weight_exp, record_costs=True)
     assert M is not None
