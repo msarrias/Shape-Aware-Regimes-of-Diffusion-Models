@@ -256,9 +256,7 @@ def clustering_job(
         logger.info(f"[D={dim}] Clustering SAGD matrix")
         breakpoints = cluster_distance_matrix(
             distances=sagd_dist_matrix,
-            method="dp",
-            weight_exp=2.0,
-            penalty_coeff=0.1
+            method="dp"
         )
         joblib.dump(breakpoints, output_file, compress=3)
 
