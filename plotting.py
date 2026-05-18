@@ -272,23 +272,24 @@ def _draw_sagd_heatmap_with_prob(
     probs = same_cluster_prob(d, mu, std, time_arr)
     n_samples = len(time_arr)
 
-    sns.heatmap(W, cmap='viridis', robust=True, ax=ax_hm, cbar=False, square=True)
+    W_min, W_max = W.min(), W.max()
+    W_norm = (W - W_min) / (W_max - W_min)
+    sns.heatmap(W_norm, cmap='viridis', robust=True, ax=ax_hm, cbar=False, square=True)
 
-    indices = np.linspace(0, n_samples - 1, 8, dtype=int)
-    tick_labels = [f"{time_arr[i]:.2f}" for i in indices]
-    ax_hm.set_xticks(indices + 0.5)
+    heat_indices = np.linspace(0, n_samples - 1, 8, dtype=int)
+    tick_labels = [f"{time_vector[idx]:.2f}" for idx in heat_indices]
+    ax_hm.set_xticks(heat_indices + 0.5)
     ax_hm.set_xticklabels(tick_labels, rotation=45)
-    ax_hm.set_yticks(indices + 0.5)
+    ax_hm.set_yticks(heat_indices + 0.5)
     ax_hm.set_yticklabels(tick_labels, rotation=0)
 
     ts_r = round(ts, 2)
-    ax_hm.axvline(x=ts_idx + 0.5, color='red', linestyle='--', alpha=0.8, label=f'$t_s$')
+    ax_hm.axvline(x=ts_idx + 0.5, color='red', linestyle='--', alpha=0.8, label=f'$t_s = {ts_r:.2f}$')
     ax_hm.axhline(y=ts_idx + 0.5, color='red', linestyle='--', alpha=0.8)
 
     if tsagd is not None and tsagd_idx is not None:
         tsagd_r = round(tsagd, 2)
-        ax_hm.axvline(x=tsagd_idx + 0.5, color='orange', linestyle='--', alpha=0.8,
-                      label=f'$t_{{SAGD}}$')
+        ax_hm.axvline(x=tsagd_idx + 0.5, color='orange', linestyle='--', alpha=0.8, label=f'$t_{{SAGD}}={tsagd_r:.2f}$')
         ax_hm.axhline(y=tsagd_idx + 0.5, color='orange', linestyle='--', alpha=0.8)
 
     ax_hm.set_xlabel("Time", fontsize=12)
@@ -397,7 +398,7 @@ def plot_sagd_heatmap_row_with_prob(
             W, time_vec, ts, ts_idx, d, mu, std,
             tsagd=tsagd, tsagd_idx=tsagd_idx,
             show_ylabel=(i == 0),
-            show_legend=(i == 0),
+            show_legend=True,
         )
 
     if save_fig_path:
