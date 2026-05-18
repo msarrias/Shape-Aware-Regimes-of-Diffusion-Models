@@ -17,6 +17,7 @@ from SASNE.SASNE import SASNE
 from adaptive_knn import AdaptiveKNNGraph
 from clustering import cluster_distance_matrix
 from ou_model import backward, theoretical_ts
+from sgd import compute_sgd, _eigen_decompose_job
 
 
 def setup_logging(exp_path, args) -> logging.Logger:
@@ -55,6 +56,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--norm_type", type=str, default="norm_wrt_volume",
                         choices=["norm_wrt_volume", "norm_wrt_avg_ctd", "scale_and_shift",
                                  "log_scale_and_shift", "log_global_scale_and_shift"])
+    parser.add_argument("--distance", type=str, default="SAGD", choices=["SAGD", "SGD"])
     parser.add_argument("--inject_edges", action="store_true", default=False)
     parser.add_argument("--clipping", action="store_true", default=False)
     parser.add_argument("--generate_sasne_embedding", action="store_true", default=False)
@@ -221,21 +223,18 @@ def ctds_job(
 def sagd_job(
     sagd_file: Path,
     ctds_dict: dict,
-    time_snaps: list,
     dim: int,
+    pairs: list,
     args: argparse.Namespace,
     logger: logging.Logger
 ) -> np.array:
     if not sagd_file.exists():
-        norm_ctds = [ctds_dict[t]['norm_ctds'] for t in time_snaps]
+        norm_ctds = [value['norm_ctds'] for value in ctds_dict.values()]
         num_graphs = len(norm_ctds)
-        pairs = [(i, j) for i in range(num_graphs) for j in range(i + 1, num_graphs)]
-
         distances = Parallel(n_jobs=args.threads)(
             delayed(wasserstein_distance)(norm_ctds[i], norm_ctds[j])
             for i, j in tqdm(pairs, desc=f"[D={dim}] SAGD Matrix")
         )
-
         sagd_dist_matrix = np.zeros((num_graphs, num_graphs))
         for (i, j), dist in zip(pairs, distances):
             sagd_dist_matrix[i, j] = sagd_dist_matrix[j, i] = dist
@@ -248,8 +247,44 @@ def sagd_job(
     return sagd_dist_matrix
 
 
+def sgd_matrix_job(
+        dim,
+        w_list: list,
+        pairs: list,
+        sgd_file: Path,
+        args: argparse.Namespace,
+        logger: logging.Logger
+) -> np.ndarray:
+    if not sgd_file.exists():
+        # eigen decomposition for all graphs
+        graphs_eigvec_list = Parallel(n_jobs=args.threads)(
+            delayed(_eigen_decompose_job)(W_i, args.laplacian, norm=True)
+            for W_i in tqdm(w_list, total=len(w_list),
+                            desc=f"[D={dim}] Eigen-decomposition SGD")
+        )
+
+        # pairwise SGD distances
+        distances = Parallel(n_jobs=args.threads)(
+            delayed(compute_sgd)(graphs_eigvec_list[i], graphs_eigvec_list[j])
+            for i, j in tqdm(pairs, desc=f"[D={dim}] SGD Matrix")
+        )
+
+        n = len(w_list)
+        sgd_dist_matrix = np.zeros((n, n))
+        for (i, j), dist in zip(pairs, distances):
+            sgd_dist_matrix[i, j] = sgd_dist_matrix[j, i] = dist
+
+        joblib.dump(sgd_dist_matrix, sgd_file, compress=3)
+
+    else:
+        logger.info(f"[D={dim}] SGD found. Loading...")
+        sgd_dist_matrix = joblib.load(sgd_file)
+
+    return sgd_dist_matrix
+
+
 def clustering_job(
-        sagd_dist_matrix: np.ndarray,
+        distance_matrix: np.ndarray,
         dim: int,
         output_file: Path,
         logger: logging.Logger
@@ -257,30 +292,33 @@ def clustering_job(
     if not output_file.exists():
         logger.info(f"[D={dim}] Clustering SAGD matrix")
         breakpoints = cluster_distance_matrix(
-            distances=sagd_dist_matrix,
+            distances=distance_matrix,
             method="dp"
         )
         joblib.dump(breakpoints, output_file, compress=3)
 
-    else:
-        logger.info(f"[D={dim}] Breakpoints found. Loading...")
-        breakpoints = joblib.load(output_file)
-
-    return breakpoints
 
 def sasne_job(
         sasne_file_path: Path,
-        sagd_dist_matrix: np.ndarray,
+        distance_matrix: np.ndarray,
 ):
         if not sasne_file_path.exists():
-            from SASNE.SASNE import SASNE
-            embedding, Z = SASNE(data=sagd_dist_matrix)
+            embedding, Z = SASNE(data=distance_matrix)
             joblib.dump({
                 "embedding": embedding,
                 "Z": Z,
                 "D1": squareform(pdist(embedding)),
                 "D2": squareform(pdist(Z))
             }, sasne_file_path, compress=3)
+
+def fetch_pairs(
+        num_graphs: int
+):
+    return [
+        (i, j)
+        for i in range(num_graphs)
+        for j in range(i + 1, num_graphs)
+    ]
 
 def main():
     args = parse_args()
@@ -318,7 +356,6 @@ def main():
         history_file = path / f"history.jbl"
         ws_file = path / "Ws.jbl"
         ctd_file = path / "CTDs.jbl"
-        sagd_file = path / "SAGD.jbl"
         cluster_file = path / "clusters.jbl"
 
         # 1. SDE Simulation
@@ -351,28 +388,45 @@ def main():
             logger=logger
         )
 
-        # 3. CTD Calculation
-        ctds_dict = ctds_job(
-            ctd_file=ctd_file,
-            args=args,
-            w_results=w_results_list,
-            time_snaps=time_snaps,
-            dim=d,
-            logger=logger
-        )
+        pairs = fetch_pairs(num_graphs=len(time_snaps))
 
-        # 4. SAGD Distance Matrix
-        sagd_dist_matrix = sagd_job(
-            sagd_file=sagd_file,
-            args=args,
-            ctds_dict=ctds_dict,
-            time_snaps=time_snaps,
-            dim=d,
-            logger=logger
-        )
+        if args.distance == 'SAGD':
+            sagd_file = path / "SAGD.jbl"
+            # 3. CTD Calculation
+            ctds_dict = ctds_job(
+                ctd_file=ctd_file,
+                args=args,
+                w_results=w_results_list,
+                time_snaps=time_snaps,
+                dim=d,
+                logger=logger
+            )
+
+            # 4. SAGD Distance Matrix
+            distance_matrix = sagd_job(
+                sagd_file=sagd_file,
+                args=args,
+                ctds_dict=ctds_dict,
+                dim=d,
+                pairs=pairs,
+                logger=logger
+            )
+        elif args.distance == 'SGD':
+            sgd_file = path / "SGD.jbl"
+            distance_matrix = sgd_matrix_job(
+                dim=d,
+                w_list=w_results_list,
+                pairs=pairs,
+                sgd_file=sgd_file,
+                args=args,
+                logger=logger
+            )
+        else:
+            raise NotImplementedError
+
         # 5. Clustering
-        _ = clustering_job(
-            sagd_dist_matrix=sagd_dist_matrix,
+        clustering_job(
+            distance_matrix=distance_matrix,
             dim=d,
             output_file=cluster_file,
             logger=logger
@@ -383,7 +437,7 @@ def main():
             sasne_file= path / f"SASNE.jbl"
             sasne_job(
                 sasne_file_path=sasne_file,
-                sagd_dist_matrix=sagd_dist_matrix
+                distance_matrix=distance_matrix
             )
 
     logger.info('Done!')
