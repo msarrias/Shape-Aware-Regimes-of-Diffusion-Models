@@ -1,21 +1,21 @@
-import numpy as np
-import joblib
-import torch
-import sys
 import argparse
-from joblib import Parallel, delayed
-from tqdm import tqdm
-from pathlib import Path
-from scipy.stats import wasserstein_distance
-from scipy.spatial.distance import pdist, squareform
-from numpy import isclose
+import joblib
 import logging
-
-from ou_model import backward, theoretical_ts
-from clustering import cluster_distance_matrix
+import numpy as np
+import sys
+import torch
 from distances import CTD_matrix
+from joblib import Parallel, delayed
+from numpy import isclose
+from pathlib import Path
+from scipy.spatial.distance import pdist, squareform
+from scipy.stats import wasserstein_distance
 from stats import normalize
+from tqdm import tqdm
+
 from adaptive_knn import AdaptiveKNNGraph
+from clustering import cluster_distance_matrix
+from ou_model import backward, theoretical_ts
 
 
 def setup_logging(exp_path, args) -> logging.Logger:
@@ -56,6 +56,7 @@ def parse_args() -> argparse.Namespace:
                                  "log_scale_and_shift", "log_global_scale_and_shift"])
     parser.add_argument("--inject_edges", action="store_true", default=False)
     parser.add_argument("--clipping", action="store_true", default=False)
+    parser.add_argument("--generate_sasne_embedding", action="store_true", default=False)
 
     parser.add_argument("--threads", type=int, default=20)
     parser.add_argument("--exp_name", type=str, default="exp_04")
@@ -260,7 +261,18 @@ def clustering_job(
         )
         joblib.dump(breakpoints, output_file, compress=3)
 
-
+def sasne_job(
+        sasne_file_path: Path,
+        sagd_dist_matrix: np.ndarray,
+):
+        if not sasne_file_path.exists():
+            embedding, Z = SASNE(data=sagd_dist_matrix)
+            joblib.dump({
+                "embedding": embedding,
+                "Z": Z,
+                "D1": squareform(pdist(embedding)),
+                "D2": squareform(pdist(Z))
+            }, sasne_file_path, compress=3)
 
 def main():
     args = parse_args()
@@ -357,6 +369,14 @@ def main():
             output_file=cluster_file,
             logger=logger
         )
+
+        if args.generate_sasne_embedding:
+            from SASNE import SASNE
+            sasne_file= exp_path / f"SASNE.jbl"
+            sasne_job(
+                sasne_file_path=sasne_file,
+                sagd_dist_matrix=sagd_dist_matrix
+            )
 
     logger.info('Done!')
 
