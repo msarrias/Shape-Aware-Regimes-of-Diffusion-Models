@@ -11,10 +11,43 @@ from scipy.spatial.distance import pdist, squareform
 from numpy import isclose
 import logging
 
-from ou_model import backward, theoretical_ts
+from ou_model import backward, theoretical_ts, centers
 from distances import CTD_matrix
 from stats import normalize, Kruglov_distance
 from adaptive_knn import AdaptiveKNNGraph
+
+
+def parse_args():
+    parser = argparse.ArgumentParser()
+
+    parser.add_argument("--seed", type=int, default=123456)
+    parser.add_argument("--n_samples", type=int, default=1000)
+    parser.add_argument("--n_steps", type=int, default=1000)
+    parser.add_argument("--T", type=float, default=10.0)
+    parser.add_argument("--mu", type=float, default=4.0)
+
+    parser.add_argument("--kernel", type=str, default="gaussian",
+                        choices=["gaussian", "inverse_sq_euclidean_d"])
+    parser.add_argument("--model", type=str, default="bimodal",
+                        choices=["bimodal", "hierarchical"])
+    parser.add_argument("--laplacian", type=str, default="unnormalized")
+    parser.add_argument("--norm_type", type=str, default="norm_wrt_volume",
+                        choices=["norm_wrt_volume", "norm_wrt_avg_ctd", "scale_and_shift",
+                                 "log_scale_and_shift", "log_global_scale_and_shift"])
+    parser.add_argument("--inject_edges", action="store_true", default=False)
+    parser.add_argument("--clipping", action="store_true", default=False)
+    parser.add_argument("--hierarchical_sigma", default=[1, 1, 1, 1, 1, 1])
+    parser.add_argument("--hierarchical_clusters_size", default=[400, 200, 100, 300, 150, 350])
+    parser.add_argument("--hierarchical_weights", action="store_true", default=False)
+    parser.add_argument("--mu_macro", type=float, default=8)
+    parser.add_argument("--mu_micro", type=float, default=6)
+
+    parser.add_argument("--threads", type=int, default=20)
+    parser.add_argument("--exp_name", type=str, default="exp_04")
+    parser.add_argument("--ds", type=int, nargs="+", help="Explicit list of dimensions to run")
+
+    args = parser.parse_args()
+    return args
 
 
 def setup_logging(exp_path, args):
@@ -40,13 +73,13 @@ def ctd_job(
         w_result: np.ndarray,
         laplacian: str
 ):
-    C_Gi, _ = CTD_matrix(
+    C_Gi = CTD_matrix(
         W=w_result,
         laplacian_type=laplacian
     )
-    triu_i = C_Gi[np.triu_indices(w_result.shape[0], k=1)]
+    upper_tri = C_Gi[np.triu_indices(w_result.shape[0], k=1)]
 
-    return triu_i
+    return upper_tri
 
 def knn_job(
         data: np.ndarray,
@@ -62,6 +95,15 @@ def knn_job(
     w_matrix = knn_obj.compute_W(sigma=sigma)
     return knn_obj.k, (knn_obj.sigma if kernel == 'gaussian' else None), w_matrix
 
+
+def fetch_weights(
+        args: argparse.Namespace
+):
+    if args.model == 'hierarchical' and args.hierarchical_weights:
+        return args.hierarchical_clusters_size / np.sum(args.hierarchical_clusters_size)
+    return None
+
+
 def diffuse_job(
         history_file: Path,
         dim: int,
@@ -72,8 +114,9 @@ def diffuse_job(
         mu_star: float,
         std: float,
         ts_theoretical: float,
-        logger: logging.Logger,
+        logger: logging.Logger
 ):
+    weights = fetch_weights(args=args)
     if not history_file.exists():
         history = {}
         x_current = torch.randn(dim, args.n_samples)  # d x N
@@ -81,7 +124,15 @@ def diffuse_job(
 
         for step in tqdm(reversed(range(args.n_steps)), total=args.n_steps, desc=f"[D={dim}] SDE"):
             t = times[step]
-            x_current, _ = backward(x_t=x_current, t=t, dt=dt, mu_star=mu_star, std=std, model=args.model)
+            x_current, _ = backward(
+                x_t=x_current,
+                t=t,
+                dt=dt,
+                mu_star=mu_star,
+                std=std,
+                model=args.model,
+                weights=weights
+            )
             if step in snap_time_indices:
                 history[t] = x_current.T.clone().numpy()
         data_to_dump = {
@@ -89,11 +140,12 @@ def diffuse_job(
             "params": {
                 **vars(args),
                 "dim": dim,
-                "ts_theoretical": ts_theoretical,
                 "times_snapshots": list(history.keys()),
                 "times": times
             }
         }
+        if args.model == 'bimodal':
+            data_to_dump["params"]["ts_theoretical"] = ts_theoretical
         joblib.dump(data_to_dump, history_file, compress=3)
     else:
         logger.info(f"[D={dim}] History found. Loading...")
@@ -153,22 +205,22 @@ def ctds_job(
 
         if args.norm_type == "log_global_scale_and_shift":
 
-            all_log_ctds = np.concatenate([np.log1p(triu_i) for triu_i in ctds])
+            all_log_ctds = np.concatenate([np.log1p(upper_tri) for upper_tri in ctds])
             g_min = np.percentile(all_log_ctds, 1)
             g_max = np.percentile(all_log_ctds, 95)
             range_ = g_max - g_min
 
             ctds_dict = {
                 t: {
-                    'ctds': triu_i,
-                    'norm_ctds': (np.clip(np.log1p(np.array(triu_i)), g_min, g_max) - g_min) / range_
+                    'ctds': upper_tri,
+                    'norm_ctds': (np.clip(np.log1p(np.array(upper_tri)), g_min, g_max) - g_min) / range_
                 }
-                for t, triu_i in zip(time_snaps, ctds)
+                for t, upper_tri in zip(time_snaps, ctds)
             }
         else:
             ctds_dict = {
-                t: {'ctds': triu_i, 'norm_ctds': normalize(triu_i, args.norm_type)}
-                for t, triu_i in zip(time_snaps, ctds)
+                t: {'ctds': upper_tri, 'norm_ctds': normalize(upper_tri, args.norm_type)}
+                for t, upper_tri in zip(time_snaps, ctds)
             }
 
         joblib.dump({
@@ -207,34 +259,29 @@ def sagd_job(
         for (i, j), dist in zip(pairs, distances):
             sagd_dist_matrix[i, j] = sagd_dist_matrix[j, i] = dist
         joblib.dump(sagd_dist_matrix, sagd_file, compress=3)
+        
 
-def parse_args():
-    parser = argparse.ArgumentParser()
+def get_snap_times(args, times, ds):
+    if args.model=="bimodal":
+        # We want every dimension to share the same snapshots,
+        # including all theoretical ts points
+        ts_indices = []
+        for d in ds:
+            mu_star = torch.ones(d) * args.mu
+            _, ts_idx = theoretical_ts(mu_star, 1.0, times)
+            ts_indices.append(ts_idx)
+    
+        return sorted(
+            list(set(list(range(0, len(times), 10)) + ts_indices + [len(times) - 1])),
+            reverse=True
+        )
+    else:
+        return sorted(
+            list(set(list(range(0, len(times), 10)) + [len(times) - 1])),
+            reverse=True
+        )
 
-    parser.add_argument("--seed", type=int, default=123456)
-    parser.add_argument("--n_samples", type=int, default=1000)
-    parser.add_argument("--n_steps", type=int, default=1000)
-    parser.add_argument("--T", type=float, default=10.0)
-    parser.add_argument("--mu", type=float, default=4.0)
-
-    parser.add_argument("--kernel", type=str, default="gaussian",
-                        choices=["gaussian", "inverse_sq_euclidean_d"])
-    parser.add_argument("--data-model", type=str, default="bimodal",
-                        choices=["bimodal", "hierarchical"])
-    parser.add_argument("--laplacian", type=str, default="unnormalized")
-    parser.add_argument("--norm_type", type=str, default="norm_wrt_volume",
-                        choices=["norm_wrt_volume", "norm_wrt_avg_ctd", "scale_and_shift",
-                                 "log_scale_and_shift", "log_global_scale_and_shift"])
-    parser.add_argument("--inject_edges", action="store_true", default=True)
-
-    parser.add_argument("--threads", type=int, default=20)
-    parser.add_argument("--exp_name", type=str, default="exp_04")
-    parser.add_argument("--ds", type=int, nargs="+", help="Explicit list of dimensions to run")
-
-    args = parser.parse_args()
-    return args
-
-
+        
 def main():
 
     args = parse_args()
@@ -248,30 +295,21 @@ def main():
     ds = args.ds
     dt = args.T / args.n_steps
     times = np.arange(0, args.T, dt)
-
-    # We want every dimension to share the same snapshots,
-    # including all theoretical ts points
-    ts_indices = []
-    for d in ds:
-        mu_star = torch.ones(d) * args.mu
-        _, ts_idx = theoretical_ts(mu_star, 1.0, times)
-        ts_indices.append(ts_idx)
-
-    snap_time_indices = sorted(
-        list(set(list(range(0, len(times), 10)) + ts_indices + [len(times) - 1])),
-        reverse=True
-    )
+    snap_time_indices = get_snap_times(args, times, ds)
+    if args.model=="hierarchical":
+        assert args.n_samples == sum(args.hierarchical_clusters_size)
 
     for d in ds:
-        if args.data_model=="bimodal":
+        t_s = None
+        if args.model=="bimodal":
             mu_star = torch.ones(d) * args.mu
             std = 1.0
-        elif args.data_model=="hierarchical":
-            mu_star = centers()
-            std = torch.ones(6)
+            t_s, _ = theoretical_ts(mu_star, std, times)
             
-        t_s, _ = theoretical_ts(mu_star, std, times)
-
+        elif args.model=="hierarchical":
+            mu_star = centers(d=d, mu_macro=args.mu_macro, mu_micro=args.mu_micro)
+            std = args.hierarchical_sigma
+            
         path = exp_path / f"D{d}_N{args.n_samples}_T{int(args.T)}/"
         path.mkdir(parents=True, exist_ok=True)
         history_file = path / f"history.jbl"
@@ -289,7 +327,7 @@ def main():
             snap_time_indices=snap_time_indices,
             mu_star=mu_star,
             std=std,
-            ts_theoretical=t_s,
+            ts_theoretical=t_s if args.model == "bimodal" else None,
             logger=logger
         )
         time_snaps = list(history.keys())
