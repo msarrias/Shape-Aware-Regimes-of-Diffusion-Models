@@ -288,7 +288,6 @@ def plot_full_sasne_dashboard(
         ax_heat.set_yticks(heat_indices + 0.5)
         ax_heat.set_yticklabels(tick_labels, rotation=0)
         ax_heat.set_xlabel("Time")
-        ax_heat.legend(loc='upper left')
         if i == 0:
             ax_heat.set_ylabel("Time")
     plt.tight_layout()
@@ -301,7 +300,7 @@ def plot_sagd_heatmap_row(
         W_list,
         d_list,
         time_snaps_vector_list,
-        ts_tuple_list,
+        ts_tuple_list=None,
         save_fig_path=None
 ):
     num_plots = len(W_list)
@@ -312,14 +311,11 @@ def plot_sagd_heatmap_row(
     fig, axes = plt.subplots(num_rows, num_cols, figsize=(5 * num_cols, 5 * num_rows))
     axes_flat = axes.flatten() if num_plots > 1 else [axes]
 
-    for i, (W, d, ts_tuple, time_snaps_vector) in enumerate(zip(W_list, d_list, ts_tuple_list, time_snaps_vector_list)):
-        ax_heat = axes_flat[i]
-        ts, ts_idx = ts_tuple
-        
-        # # 1. Normalize current matrix to 0-1
+    for i, (W, d, time_snaps_vector) in enumerate(zip(W_list, d_list, time_snaps_vector_list)):
+        ax_heat = axes_flat[i]        
+        # 1. Normalize current matrix to 0-1
         # W_min, W_max = W.min(), W.max()
-        # # Handle cases where min might equal max to avoid division by zero
-        # W_norm = (W - W_min) / (W_max - W_min) if W_max > W_min else W - W_min
+        # W_norm = (W - W_min) / (W_max - W_min)
         W_norm = np.clip(W / np.percentile(W, 95), 0, 1)
     
         n_samples = len(time_snaps_vector)
@@ -337,13 +333,14 @@ def plot_sagd_heatmap_row(
         ax_heat.set_xlabel("Time")
 
         # Red Speciation Lines
-        ax_heat.axvline(x=ts_idx + 0.5, color='red', linestyle='--', alpha=0.8, label=f'$t_s = {ts:.2f}$')
-        ax_heat.axhline(y=ts_idx + 0.5, color='red', linestyle='--', alpha=0.8)
+        if ts_tuple_list:
+            ts, ts_idx = ts_tuple
+            ax_heat.axvline(x=ts_idx + 0.5, color='red', linestyle='--', alpha=0.8, label=f'$t_s = {ts:.2f}$')
+            ax_heat.axhline(y=ts_idx + 0.5, color='red', linestyle='--', alpha=0.8)
     
         ax_heat.set_title(f"d={d}", fontsize=16)
         if i % max_cols == 0: 
             ax_heat.set_ylabel("Time", fontsize=12)
-        ax_heat.legend(loc='upper left')
 
     # Delete unused axes
     for j in range(i + 1, len(axes_flat)): 
