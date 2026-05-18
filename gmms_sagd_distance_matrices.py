@@ -261,11 +261,18 @@ def clustering_job(
         )
         joblib.dump(breakpoints, output_file, compress=3)
 
+    else:
+        logger.info(f"[D={dim}] Breakpoints found. Loading...")
+        breakpoints = joblib.load(output_file)
+
+    return breakpoints
+
 def sasne_job(
         sasne_file_path: Path,
         sagd_dist_matrix: np.ndarray,
 ):
         if not sasne_file_path.exists():
+            from SASNE.SASNE import SASNE
             embedding, Z = SASNE(data=sagd_dist_matrix)
             joblib.dump({
                 "embedding": embedding,
@@ -363,7 +370,7 @@ def main():
             logger=logger
         )
         # 5. Clustering
-        clustering_job(
+        _ = clustering_job(
             sagd_dist_matrix=sagd_dist_matrix,
             dim=d,
             output_file=cluster_file,
@@ -371,8 +378,7 @@ def main():
         )
 
         if args.generate_sasne_embedding:
-            from SASNE import SASNE
-            sasne_file= exp_path / f"SASNE.jbl"
+            sasne_file= path / f"SASNE.jbl"
             sasne_job(
                 sasne_file_path=sasne_file,
                 sagd_dist_matrix=sagd_dist_matrix
