@@ -13,6 +13,7 @@ from scipy.stats import wasserstein_distance
 from stats import normalize
 from tqdm import tqdm
 
+from SASNE.SASNE import SASNE
 from adaptive_knn import AdaptiveKNNGraph
 from clustering import cluster_distance_matrix
 from ou_model import backward, theoretical_ts
@@ -377,6 +378,7 @@ def main():
             logger=logger
         )
 
+        #. 6 SASNE embedding -- optional
         if args.generate_sasne_embedding:
             sasne_file= path / f"SASNE.jbl"
             sasne_job(
