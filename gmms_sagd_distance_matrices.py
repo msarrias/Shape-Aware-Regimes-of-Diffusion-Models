@@ -48,16 +48,23 @@ def parse_args() -> argparse.Namespace:
 
     parser.add_argument("--kernel", type=str, default="gaussian",
                         choices=["gaussian", "inverse_sq_euclidean_d"])
-    parser.add_argument("--data-model", type=str, default="bimodal",
-                        choices=["bimodal", "hierarchical"])
+    parser.add_argument("--data_model", type=str, default="bimodal",
+                        choices=["bimodal", "hierarchical"]
+                        )
     parser.add_argument("--laplacian", type=str, default="unnormalized")
     parser.add_argument("--norm_type", type=str, default="norm_wrt_volume",
                         choices=["norm_wrt_volume", "norm_wrt_avg_ctd", "scale_and_shift",
-                                 "log_scale_and_shift", "log_global_scale_and_shift"])
+                                 "log_scale_and_shift", "log_global_scale_and_shift"]
+                        )
     parser.add_argument("--distance", type=str, default="SAGD", choices=["SAGD", "SGD"])
     parser.add_argument("--inject_edges", action="store_true", default=False)
     parser.add_argument("--clipping", action="store_true", default=False)
     parser.add_argument("--generate_sasne_embedding", action="store_true", default=False)
+    parser.add_argument("--hierarchical_weights", action="store_true", default=False)
+    parser.add_argument("--hierarchical_sigma", default=[1, 1, 1, 1, 1, 1])
+    parser.add_argument("--hierarchical_clusters_size", default=[400, 200, 100, 300, 150, 350])
+    parser.add_argument("--mu_macro", type=float, default=8)
+    parser.add_argument("--mu_micro", type=float, default=6)
 
     parser.add_argument("--threads", type=int, default=20)
     parser.add_argument("--exp_name", type=str, default="exp_04")
@@ -292,27 +299,7 @@ def sgd_matrix_job(
         sgd_dist_matrix = joblib.load(sgd_file)
     return sgd_dist_matrix
 
-
-def get_snap_times(args, times, ds):
-    if args.model=="bimodal":
-        # We want every dimension to share the same snapshots,
-        # including all theoretical ts points
-        ts_indices = []
-        for d in ds:
-            mu_star = torch.ones(d) * args.mu
-            _, ts_idx = theoretical_ts(mu_star, 1.0, times)
-            ts_indices.append(ts_idx)
-
-        return sorted(
-            list(set(list(range(0, len(times), 10)) + ts_indices + [len(times) - 1])),
-            reverse=True
-        )
-    else:
-        return sorted(
-            list(set(list(range(0, len(times), 10)) + [len(times) - 1])),
-            reverse=True
-        )
-
+    
 def clustering_job(
         distance_matrix: np.ndarray,
         dim: int,
@@ -346,6 +333,28 @@ def sasne_job(
                 "D2": squareform(pdist(Z))
             }, sasne_file_path, compress=3)
 
+
+def get_snap_times(args, times, ds):
+    if args.model=="bimodal":
+        # We want every dimension to share the same snapshots,
+        # including all theoretical ts points
+        ts_indices = []
+        for d in ds:
+            mu_star = torch.ones(d) * args.mu
+            _, ts_idx = theoretical_ts(mu_star, 1.0, times)
+            ts_indices.append(ts_idx)
+
+        return sorted(
+            list(set(list(range(0, len(times), 10)) + ts_indices + [len(times) - 1])),
+            reverse=True
+        )
+    else:
+        return sorted(
+            list(set(list(range(0, len(times), 10)) + [len(times) - 1])),
+            reverse=True
+        )
+
+
 def fetch_pairs(
         num_graphs: int
 ):
@@ -355,7 +364,7 @@ def fetch_pairs(
         for j in range(i + 1, num_graphs)
     ]
 
-
+    
 def main():
     args = parse_args()
     sys.setrecursionlimit(2000)
@@ -369,6 +378,7 @@ def main():
     dt = args.T / args.n_steps
     times = np.arange(0, args.T, dt)
     snap_time_indices = get_snap_times(args, times, ds)
+    
     if args.model=="hierarchical":
         assert args.n_samples == sum(args.hierarchical_clusters_size)
 
