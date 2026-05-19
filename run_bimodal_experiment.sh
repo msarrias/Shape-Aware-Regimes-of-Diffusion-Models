@@ -43,7 +43,7 @@ for NORM in "${NORM_TYPES[@]}"; do
             --data-model "$MODEL" \
             --inject_edges \
             --generate_sasne_embedding \
-            --distance "$DISTANCE"
+            --distance "$DISTANCE" \
             $CLIPPING_FLAG
 
     done
