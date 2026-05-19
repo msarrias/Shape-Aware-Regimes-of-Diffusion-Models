@@ -62,19 +62,18 @@ def centers(d, mu_micro, mu_macro, n_inner=3):
 
 def score(x_t, t, mu_star, std, model='bimodal', weights=None):
     """
-    Score function for three models, all working in arbitrary dimension d.
+    Score function for two models, both working in arbitrary dimension d.
     x_t   : (d, N) tensor
     t     : float
     mu_star:
-        bimodal    — (d,) tensor, the single mean
+        bimodal      — (d,) tensor, the single mean
         hierarchical — (K, d) array, the K cluster means
-        rings      — ignored, rings defined by Q
     std   :
         bimodal      — scalar tensor
         hierarchical — (K,) array, per-cluster std
-        rings        — scalar, manifold noise level
-    Q     : (d, d) orthogonal matrix for rings embedding (optional).
-              If None, rings live in dims 0,1,2 with zeros elsewhere.
+    weights:
+        hierarchical — optional (K,) array of mixture weights; if None,
+                       uniform weights are used
     """
 
     if model == 'bimodal':
