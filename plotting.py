@@ -1,6 +1,5 @@
 # Gemini wrote this for me.
 import numpy as np
-from matplotlib import cm
 from matplotlib.colors import LinearSegmentedColormap
 import torch
 import seaborn as sns
@@ -8,7 +7,6 @@ from matplotlib.animation import FuncAnimation
 from mpl_toolkits.mplot3d.art3d import Poly3DCollection
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 from matplotlib import pyplot as plt
-from mpl_toolkits.mplot3d import Axes3D
 
 
 def plot_data_distribution(
@@ -16,7 +14,10 @@ def plot_data_distribution(
         title,
         ax,
         path_history,
-        times
+        times,
+        mu_star,
+        std
+
 ):
     t = times[step_idx]
     d1_samples = path_history[step_idx, :, 0] 
@@ -113,7 +114,6 @@ def create_cont_sasne_animation(
     # repeat=False ensures it stops at t=0
     ani = FuncAnimation(fig, update, frames=len(embedding),
                         init_func=init, blit=True, interval=150, repeat=False)
-    
     ani.save(save_path, writer='pillow', fps=5, metadata={'loop': 1})
     plt.close()
 
@@ -305,10 +305,10 @@ def plot_sagd_heatmap_row(
         ts, ts_idx = ts_tuple
 
         ## 1. Normalize current matrix to 0-1
-        # W_min, W_max = W.min(), W.max()
+        W_min, W_max = W.min(), W.max()
         ## Handle cases where min might equal max to avoid division by zero
-        # W_norm = (W - W_min) / (W_max - W_min) if W_max > W_min else W - W_min
-        W_norm = np.clip(W / np.percentile(W, 95), 0, 1)
+        W_norm = (W - W_min) / (W_max - W_min) if W_max > W_min else W - W_min
+        # W_norm = np.clip(W / np.percentile(W, 95), 0, 1)
 
         n_samples = len(time_snaps_vector)
         heat_indices = np.linspace(0, n_samples - 1, 8, dtype=int)
@@ -463,26 +463,20 @@ def plot_sagd_heatmap_with_prob(
         tsagd_idx=None,
         save_fig_path=None
 ):
-    """
-    SAGD distance matrix heatmap with a same-cluster probability curve
-    (ou_model.same_cluster_prob) on top, sharing the time (x) axis like a
-    seaborn jointplot.
-
-    Parameters
-    ----------
-    mu : float
-        Per-coordinate cluster amplitude (so the cluster center is mu*1_d).
-    std : float
-        Per-cluster internal standard deviation.
-    tsagd, tsagd_idx : float, int, optional
-        If both provided, a green dashed marker is drawn at this time on
-        the heatmap and on the probability marginal.
-    """
     fig, ax_hm = plt.subplots(figsize=(8, 9))
     _draw_sagd_heatmap_with_prob(
-        ax_hm, W, time_vector, ts, ts_idx, d, mu, std,
-        tsagd=tsagd, tsagd_idx=tsagd_idx,
-        show_ylabel=True, show_legend=True,
+        ax_hm=ax_hm,
+        W=W,
+        time_vector=time_vector,
+        ts=ts,
+        ts_idx=ts_idx,
+        d=d,
+        mu=mu,
+        std=std,
+        tsagd=tsagd,
+        tsagd_idx=tsagd_idx,
+        show_ylabel=True,
+        show_legend=True
     )
     if save_fig_path:
         plt.savefig(save_fig_path, dpi=300, bbox_inches='tight')
@@ -490,10 +484,10 @@ def plot_sagd_heatmap_with_prob(
 
 
 def plot_sagd_heatmap_row_with_prob(
-        W_list,
-        d_list,
-        time_snaps_vector_list,
-        ts_tuple_list,
+        W_list: list,
+        d_list: list,
+        time_snaps_vector_list: list,
+        ts_tuple_list: list,
         mu,
         std,
         tsagd_tuple_list=None,
@@ -511,7 +505,8 @@ def plot_sagd_heatmap_row_with_prob(
     """
     num_plots = len(W_list)
     fig, axes = plt.subplots(
-        1, num_plots,
+        nrows=1,
+        ncols=num_plots,
         figsize=(6 * num_plots, 7.5),
         gridspec_kw={'wspace': 0.5},
     )
@@ -529,9 +524,16 @@ def plot_sagd_heatmap_row_with_prob(
         else:
             tsagd, tsagd_idx = tsagd_tuple
         _draw_sagd_heatmap_with_prob(
-            axes[i],
-            W, time_vec, ts, ts_idx, d, mu, std,
-            tsagd=tsagd, tsagd_idx=tsagd_idx,
+            ax_hm=axes[i],
+            W=W,
+            time_vector=time_vec,
+            ts=ts,
+            ts_idx=ts_idx,
+            d=d,
+            mu=mu,
+            std=std,
+            tsagd=tsagd,
+            tsagd_idx=tsagd_idx,
             show_ylabel=(i == 0),
             show_legend=True,
         )
