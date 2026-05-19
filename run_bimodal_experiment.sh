@@ -11,6 +11,8 @@ DS_LIST="2 50 256 1024 16384"
 
 KERNEL="gaussian"
 LAPLACIAN="unnormalized"
+MODEL="bimodal"
+DISTANCE="SAGD"
 NORM_TYPES=("log_global_scale_and_shift" "scale_and_shift" "norm_wrt_avg_ctd" "norm_wrt_volume")
 
 for NORM in "${NORM_TYPES[@]}"; do
@@ -38,8 +40,10 @@ for NORM in "${NORM_TYPES[@]}"; do
             --kernel "$KERNEL" \
             --laplacian "$LAPLACIAN" \
             --norm_type "$NORM" \
+            --data_model "$MODEL" \
             --inject_edges \
             --generate_sasne_embedding \
+            --distance "$DISTANCE" \
             $CLIPPING_FLAG
 
     done

@@ -4,19 +4,18 @@ import logging
 import numpy as np
 import sys
 import torch
-from distances import CTD_matrix
 from joblib import Parallel, delayed
-from numpy import isclose
 from pathlib import Path
 from scipy.spatial.distance import pdist, squareform
 from scipy.stats import wasserstein_distance
-from stats import normalize
 from tqdm import tqdm
 
 from adaptive_knn import AdaptiveKNNGraph
 from clustering import cluster_distance_matrix
-from ou_model import backward, theoretical_ts
+from ou_model import backward, theoretical_ts, centers
 from sgd import compute_sgd, _eigen_decompose_job
+from stats import normalize
+from distances import CTD_matrix
 
 
 def setup_logging(exp_path, args) -> logging.Logger:
@@ -49,16 +48,23 @@ def parse_args() -> argparse.Namespace:
 
     parser.add_argument("--kernel", type=str, default="gaussian",
                         choices=["gaussian", "inverse_sq_euclidean_d"])
-    parser.add_argument("--data-model", type=str, default="bimodal",
-                        choices=["bimodal", "hierarchical"])
+    parser.add_argument("--data_model", type=str, default="bimodal",
+                        choices=["bimodal", "hierarchical"]
+                        )
     parser.add_argument("--laplacian", type=str, default="unnormalized")
     parser.add_argument("--norm_type", type=str, default="norm_wrt_volume",
                         choices=["norm_wrt_volume", "norm_wrt_avg_ctd", "scale_and_shift",
-                                 "log_scale_and_shift", "log_global_scale_and_shift"])
+                                 "log_scale_and_shift", "log_global_scale_and_shift"]
+                        )
     parser.add_argument("--distance", type=str, default="SAGD", choices=["SAGD", "SGD"])
     parser.add_argument("--inject_edges", action="store_true", default=False)
     parser.add_argument("--clipping", action="store_true", default=False)
     parser.add_argument("--generate_sasne_embedding", action="store_true", default=False)
+    parser.add_argument("--hierarchical_weights", action="store_true", default=False)
+    parser.add_argument("--hierarchical_sigma", default=[1, 1, 1, 1, 1, 1])
+    parser.add_argument("--hierarchical_clusters_size", default=[400, 200, 100, 300, 150, 350])
+    parser.add_argument("--mu_macro", type=float, default=8)
+    parser.add_argument("--mu_micro", type=float, default=6)
 
     parser.add_argument("--threads", type=int, default=20)
     parser.add_argument("--exp_name", type=str, default="exp_04")
@@ -76,9 +82,9 @@ def ctd_job(
         W=w_result,
         laplacian_type=laplacian
     )
-    triu_i = C_Gi[np.triu_indices(w_result.shape[0], k=1)]
+    upper_tri = C_Gi[np.triu_indices(w_result.shape[0], k=1)]
 
-    return triu_i
+    return upper_tri
 
 def knn_job(
         data: np.ndarray,
@@ -95,6 +101,14 @@ def knn_job(
     return knn_obj.k, (knn_obj.sigma if kernel == 'gaussian' else None), w_matrix
 
 
+def fetch_weights(
+        args: argparse.Namespace
+):
+    if args.data_model == 'hierarchical' and args.hierarchical_weights:
+        return args.hierarchical_clusters_size / np.sum(args.hierarchical_clusters_size)
+    return None
+
+
 def diffuse_job(
         history_file: Path,
         dim: int,
@@ -107,10 +121,12 @@ def diffuse_job(
         ts_theoretical: float,
         logger: logging.Logger,
 ) -> np.ndarray:
+    weights = fetch_weights(args=args)
     if not history_file.exists():
         history = {}
         x_current = torch.randn(dim, args.n_samples)  # d x N
         history[args.T] = x_current.T.clone().numpy()  # N x d
+
         for step in tqdm(reversed(range(args.n_steps)), total=args.n_steps, desc=f"[D={dim}] SDE"):
             t = times[step]
             x_current, _ = backward(
@@ -118,7 +134,9 @@ def diffuse_job(
                 t=t,
                 dt=dt,
                 mu_star=mu_star,
-                std=std
+                std=std,
+                model=args.data_model,
+                weights=weights
             )
             if step in snap_time_indices:
                 history[t] = x_current.T.clone().numpy()
@@ -127,11 +145,12 @@ def diffuse_job(
             "params": {
                 **vars(args),
                 "dim": dim,
-                "ts_theoretical": ts_theoretical,
                 "times_snapshots": list(history.keys()),
                 "times": times
             }
         }
+        if args.data_model == 'bimodal':
+            data_to_dump["params"]["ts_theoretical"] = ts_theoretical
         joblib.dump(data_to_dump, history_file, compress=3)
     else:
         logger.info(f"[D={dim}] History found. Loading...")
@@ -278,10 +297,9 @@ def sgd_matrix_job(
     else:
         logger.info(f"[D={dim}] SGD found. Loading...")
         sgd_dist_matrix = joblib.load(sgd_file)
-
     return sgd_dist_matrix
 
-
+    
 def clustering_job(
         distance_matrix: np.ndarray,
         dim: int,
@@ -315,6 +333,28 @@ def sasne_job(
                 "D2": squareform(pdist(Z))
             }, sasne_file_path, compress=3)
 
+
+def get_snap_times(args, times, ds):
+    if args.data_model=="bimodal":
+        # We want every dimension to share the same snapshots,
+        # including all theoretical ts points
+        ts_indices = []
+        for d in ds:
+            mu_star = torch.ones(d) * args.mu
+            _, ts_idx = theoretical_ts(mu_star, 1.0, times)
+            ts_indices.append(ts_idx)
+
+        return sorted(
+            list(set(list(range(0, len(times), 10)) + ts_indices + [len(times) - 1])),
+            reverse=True
+        )
+    else:
+        return sorted(
+            list(set(list(range(0, len(times), 10)) + [len(times) - 1])),
+            reverse=True
+        )
+
+
 def fetch_pairs(
         num_graphs: int
 ):
@@ -324,6 +364,7 @@ def fetch_pairs(
         for j in range(i + 1, num_graphs)
     ]
 
+    
 def main():
     args = parse_args()
     sys.setrecursionlimit(2000)
@@ -336,24 +377,21 @@ def main():
     ds = args.ds
     dt = args.T / args.n_steps
     times = np.arange(0, args.T, dt)
-
-    # We want every dimension to share the same snapshots,
-    # including all theoretical ts points
-    ts_indices = []
-    for d in ds:
-        mu_star = torch.ones(d) * args.mu
-        _, ts_idx = theoretical_ts(mu_star, 1.0, times)
-        ts_indices.append(ts_idx)
-
-    snap_time_indices = sorted(
-        list(set(list(range(0, len(times), 10)) + ts_indices + [len(times) - 1])),
-        reverse=True
-    )
+    snap_time_indices = get_snap_times(args, times, ds)
+    
+    if args.data_model=="hierarchical":
+        assert args.n_samples == sum(args.hierarchical_clusters_size)
 
     for d in ds:
-        mu_star = torch.ones(d) * args.mu
-        std = 1.0
-        t_s, _ = theoretical_ts(mu_star, std, times)
+        t_s = None
+        if args.data_model=="bimodal":
+            mu_star = torch.ones(d) * args.mu
+            std = 1.0
+            t_s, _ = theoretical_ts(mu_star, std, times)
+
+        elif args.data_model=="hierarchical":
+            mu_star = centers(d=d, mu_macro=args.mu_macro, mu_micro=args.mu_micro)
+            std = args.hierarchical_sigma
 
         path = exp_path / f"D{d}_N{args.n_samples}_T{int(args.T)}/"
         path.mkdir(parents=True, exist_ok=True)
@@ -372,7 +410,7 @@ def main():
             snap_time_indices=snap_time_indices,
             mu_star=mu_star,
             std=std,
-            ts_theoretical=t_s,
+            ts_theoretical=t_s if args.data_model == "bimodal" else None,
             logger=logger
         )
         time_snaps = list(history.keys())
