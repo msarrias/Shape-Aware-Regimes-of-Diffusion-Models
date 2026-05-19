@@ -12,7 +12,7 @@ from tqdm import tqdm
 
 from adaptive_knn import AdaptiveKNNGraph
 from clustering import cluster_distance_matrix
-from ou_model import backward, theoretical_ts
+from ou_model import backward, theoretical_ts, centers
 from sgd import compute_sgd, _eigen_decompose_job
 from stats import normalize
 from distances import CTD_matrix
