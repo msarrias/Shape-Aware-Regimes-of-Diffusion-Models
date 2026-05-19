@@ -1,11 +1,6 @@
-import matplotlib.pyplot as plt
 import numba as nb
 import numpy as np
-import matplotlib as mpl
-from matplotlib import cm
-from mpl_toolkits.mplot3d import Axes3D
 import torch
-import sys
 from scipy.special import softmax
 
 
@@ -34,7 +29,7 @@ def backward(x_t, t, dt, mu_star, std, model, weights=None, epsilon=None):
     if epsilon is None:                                # For reproducibility
         epsilon = torch.randn_like(x_t)     # N(0,1)
     s = score(x_t, t, mu_star, std, model, weights)
-    s = torch.tensor(s, dtype=x_t.dtype)
+    s = torch.as_tensor(s, dtype=x_t.dtype, device=x_t.device)
     f = -x_t - 2 * s
     dW = np.sqrt(2 * dt) * epsilon                     # N(0, dt)
     x_tm1 = x_t - dt * f + dW
@@ -105,6 +100,7 @@ def score(x_t, t, mu_star, std, model='bimodal', weights=None):
         return s_np.T                                             # (d, N)
     else:
         raise ValueError('Unknown model: {}'.format(model))
+
 
 def classify(x, mu_star):
     """
