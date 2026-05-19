@@ -104,7 +104,7 @@ def knn_job(
 def fetch_weights(
         args: argparse.Namespace
 ):
-    if args.model == 'hierarchical' and args.hierarchical_weights:
+    if args.data_model == 'hierarchical' and args.hierarchical_weights:
         return args.hierarchical_clusters_size / np.sum(args.hierarchical_clusters_size)
     return None
 
@@ -135,7 +135,7 @@ def diffuse_job(
                 dt=dt,
                 mu_star=mu_star,
                 std=std,
-                model=args.model,
+                model=args.data_model,
                 weights=weights
             )
             if step in snap_time_indices:
@@ -149,7 +149,7 @@ def diffuse_job(
                 "times": times
             }
         }
-        if args.model == 'bimodal':
+        if args.data_model == 'bimodal':
             data_to_dump["params"]["ts_theoretical"] = ts_theoretical
         joblib.dump(data_to_dump, history_file, compress=3)
     else:
@@ -335,7 +335,7 @@ def sasne_job(
 
 
 def get_snap_times(args, times, ds):
-    if args.model=="bimodal":
+    if args.data_model=="bimodal":
         # We want every dimension to share the same snapshots,
         # including all theoretical ts points
         ts_indices = []
@@ -379,17 +379,17 @@ def main():
     times = np.arange(0, args.T, dt)
     snap_time_indices = get_snap_times(args, times, ds)
     
-    if args.model=="hierarchical":
+    if args.data_model=="hierarchical":
         assert args.n_samples == sum(args.hierarchical_clusters_size)
 
     for d in ds:
         t_s = None
-        if args.model=="bimodal":
+        if args.data_model=="bimodal":
             mu_star = torch.ones(d) * args.mu
             std = 1.0
             t_s, _ = theoretical_ts(mu_star, std, times)
 
-        elif args.model=="hierarchical":
+        elif args.data_model=="hierarchical":
             mu_star = centers(d=d, mu_macro=args.mu_macro, mu_micro=args.mu_micro)
             std = args.hierarchical_sigma
 
@@ -410,7 +410,7 @@ def main():
             snap_time_indices=snap_time_indices,
             mu_star=mu_star,
             std=std,
-            ts_theoretical=t_s if args.model == "bimodal" else None,
+            ts_theoretical=t_s if args.data_model == "bimodal" else None,
             logger=logger
         )
         time_snaps = list(history.keys())
