@@ -86,7 +86,7 @@ def score(x_t, t, mu_star, std, model='bimodal', weights=None):
         return torch.tanh(m / Gamma_t) * mu_t / Gamma_t - x_t / Gamma_t
 
     elif model == 'hierarchical':
-        X = x_t.T.detach().numpy() if isinstance(x_t, torch.Tensor) else x_t.T  # (N, d)                     # (N, d)
+        X = x_t.T.detach().cpu().numpy() if isinstance(x_t, torch.Tensor) else x_t.T  # (N, d)
         d = X.shape[1]
         sigmas  = np.array(std)
         mu_t = mu_star * np.exp(-t)           # (K, d)
