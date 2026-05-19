@@ -53,7 +53,6 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--kernel", type=str, default="gaussian",
                         choices=["gaussian", "inverse_sq_euclidean_d"]
                         )
-
     parser.add_argument("--data_model", type=str, default="bimodal",
                         choices=["bimodal", "hierarchical"]
                         )

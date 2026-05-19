@@ -19,7 +19,7 @@ def normalize_eigenvectors(
     col_range = np.where(col_range == 0, 1.0, col_range)
     
     return (Phi - col_min) / col_range
-    
+
 def _solve_and_sort_std_eigv_problem(
         matrix: np.ndarray,
 ):
@@ -36,7 +36,7 @@ def _solve_and_sort_std_eigv_problem(
     eigvc = eigvc[:, idx]  # column-wise
 
     return eigv, eigvc
-    
+
 def _eigen_decompose_job(
         W: np.ndarray,
         laplacian_type: str,
@@ -46,13 +46,15 @@ def _eigen_decompose_job(
         raise ValueError("Unsupported laplacian_type")
 
     if laplacian_type == "normalized":
-        L = normalized_Laplacian(W)
+        L = normalized_Laplacian(W=W)
 
     elif laplacian_type == "unnormalized":
-        L = unnormalized_Laplacian(W)
+        L = unnormalized_Laplacian(W=W)
+    else:
+        raise ValueError("Unsupported laplacian_type")
 
     # Solve Eigen-problem
-    eigvs, eigvecs = _solve_and_sort_std_eigv_problem(L)
+    eigvs, eigvecs = _solve_and_sort_std_eigv_problem(matrix=L)
 
     if np.sum(eigvs < 1e-10) > 1:
         raise ValueError(
@@ -60,9 +62,9 @@ def _eigen_decompose_job(
         )
     Phi = eigvecs[:, 1:]
     if norm:
-        norm_Phi = normalize_eigenvectors(Phi)
+        norm_Phi = normalize_eigenvectors(Phi=Phi)
         return norm_Phi
-    
+
     return Phi
 
 def compute_sgd(
@@ -71,7 +73,7 @@ def compute_sgd(
 ):
     Ni, Nj = Phi1.shape[1], Phi2.shape[1]
     Mij    = min(Ni, Nj)
-    signs  = [(1, 1), (1, -1), (-1, 1), (-1, -1)]
+    signs = [(1, 1), (1, -1)]
     cum_sum = 0
     for k in range(Mij):
         best = float('inf')
