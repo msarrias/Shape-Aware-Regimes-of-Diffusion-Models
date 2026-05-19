@@ -370,7 +370,7 @@ def create_cont_sasne_animation(
 def create_animated_embedding(
         embedding,
         d,
-        ts_idx,
+        tsagd_idx,
         time_snaps,
         save_path
 ):
@@ -409,7 +409,7 @@ def create_animated_embedding(
         sc.set_offsets(current_data)
         sc.set_array(np.arange(frame + 1))
         current_t = time_snaps[frame]
-        if frame == ts_idx:
+        if frame == tsagd_idx:
             time_text.set_text(f"t = {current_t:.2f} * (Speciation)")
             time_text.set_color('darkcyan') # Match the milestone color
         else:
@@ -420,15 +420,18 @@ def create_animated_embedding(
         if frame == 0 and 'start' not in milestones:
             milestones['start'] = add_pointer_ani(ax, 0, '$t=T$', 'red', (-80, 40))
         
-        if frame == ts_idx and 'ts' not in milestones:
-            milestones['ts'] = add_pointer_ani(ax, ts_idx, '$t=t_s$', 'darkcyan', (40, 40))
+        if frame == tsagd_idx and 'ts' not in milestones:
+            milestones['ts'] = add_pointer_ani(ax, tsagd_idx, '$t=t_{\mathrm{SAGD}}$', 'darkcyan', (40, 40))
             
         if frame == n_frames - 1 and 'end' not in milestones:
             milestones['end'] = add_pointer_ani(ax, n_frames - 1, '$t=0$', 'orange', (20, -40))
             
         return [sc, time_text] + list(milestones.values())
     ani = FuncAnimation(fig, update, frames=n_frames, interval=200, blit=False, repeat=False)
-    ani.save(save_path, writer='pillow', fps=5, savefig_kwargs={'facecolor':'white'}, metadata={'loop': 1})
+    animation_path = save_path + ".gif"
+    ani.save(animation_path, writer='pillow', fps=5, savefig_kwargs={'facecolor':'white'}, metadata={'loop': 1})
+    frame_path = save_path + ".png"
+    fig.savefig(frame_path)
     plt.close()
 
 

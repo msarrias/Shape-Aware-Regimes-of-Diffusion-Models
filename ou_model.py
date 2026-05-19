@@ -1,3 +1,5 @@
+import matplotlib.pyplot as plt
+import numba as nb
 import numpy as np
 import matplotlib as mpl
 from matplotlib import cm
@@ -6,6 +8,9 @@ import torch
 import sys
 from scipy.special import softmax
 
+
+from functools import partial
+from scipy import integrate
 
 # most code comes from here https://github.com/tbonnair/Dynamical-Regimes-of-Diffusion-Models
 def forward(x_0, t):
@@ -60,11 +65,11 @@ def score(x_t, t, mu_star, std, model='bimodal', weights=None):
     Score function for three models, all working in arbitrary dimension d.
     x_t   : (d, N) tensor
     t     : float
-    mu_star: 
+    mu_star:
         bimodal    — (d,) tensor, the single mean
         hierarchical — (K, d) array, the K cluster means
         rings      — ignored, rings defined by Q
-    std   : 
+    std   :
         bimodal      — scalar tensor
         hierarchical — (K,) array, per-cluster std
         rings        — scalar, manifold noise level
@@ -93,7 +98,7 @@ def score(x_t, t, mu_star, std, model='bimodal', weights=None):
         diff = X[:, None, :] - mu_t[None, :, :]           # (N, K, d)
         # divide by d to prevent softmax collapse in high dimensions
         log_weights = np.log(weights)[None, :] - 0.5 * np.sum(diff**2, axis=2) / (Delta_t[None, :] * d)
-        
+
         post = softmax(log_weights, axis=1)                # (N, K)
         x_hat = np.einsum('nk,kd->nd', post, mu_t)         # (N, d)
         Delta_t_avg = np.einsum('nk,k->n',   post, Delta_t)      # (N,)
@@ -101,7 +106,7 @@ def score(x_t, t, mu_star, std, model='bimodal', weights=None):
         return s_np.T                                             # (d, N)
     else:
         raise ValueError('Unknown model: {}'.format(model))
-        
+
 def classify(x, mu_star):
     """
     Predicts which of the classes a particle belongs to.
@@ -111,6 +116,7 @@ def classify(x, mu_star):
     # return np.sign(m)
     m = torch.matmul(mu_star, x) 
     return torch.sign(m)
+
 
 def classify_hierarchical(X, mu_star):
     """
@@ -123,6 +129,7 @@ def classify_hierarchical(X, mu_star):
     dists  = np.linalg.norm(diff, axis=2)           # (N, K)
     labels = dists.argmin(axis=1)                   # (N,)
     return labels
+
 
 def theoretical_ts(mu_star, std, times):
     """
@@ -145,4 +152,57 @@ def theoretical_ts(mu_star, std, times):
     t_s_idx = np.abs(times - t_s).argmin()
     
     return t_s, t_s_idx
-    
+
+
+@nb.njit(error_model="numpy",fastmath=True)
+def gaussian(m, s, x):
+    return 1/np.sqrt(2*np.pi*s) * np.exp(-(x-m)**2 / 2 / s)
+
+@nb.njit(error_model="numpy",fastmath=True)
+def integrand(m, s, t, x):
+    dt = 1 - np.exp(-2*t)
+    gt = dt+s*np.exp(-2*t)
+    Gp = gaussian(m*np.exp(-t), gt, x)
+    Gm = gaussian(-m*np.exp(-t), gt, x)
+    itgrd = (Gp**2+Gm**2) / (Gp + Gm)
+    return itgrd
+
+
+def same_cluster_prob(dim, mu, std, times):
+    """
+    Estimates the probability that two clones will be grouped at the same cluster
+    :param dim: Data dimension
+    :param mu: The cluster center vector is torch.ones(d) * args.mu
+    :param std: The standard deviation (internal variance) of the clusters.
+    :param times: The array of time steps used in the simulation.
+    """
+    phi = np.zeros(len(times))
+    m = mu * np.sqrt(dim)
+    for (it, t) in enumerate(times):
+        c = m*np.exp(-t)
+        x0 = -c-5*std
+        part = partial(integrand, m, std, t)
+        integral = integrate.quad(part, x0, -x0, epsrel=1e-4)[0]
+        if np.isnan(integral):
+            x0, x1, x2, x3 = -c-5*std, -c+5*std, c-5*std, c+5*std
+            integral = integrate.quad(part, x0, x1, epsrel=1e-4)[0]
+            integral += integrate.quad(part, x2, x3, epsrel=1e-4)[0]
+        phi[it] = 1/2*integral
+    return phi
+
+
+def pos_cluster_prob(y, t, dim, mu, std):
+    """
+    Calculates the probability that the backward process ends in +mu center
+    knowing that it was in y in given time t
+    :param dim: Data dimension
+    :param mu: The cluster center vector is torch.ones(d) * args.mu
+    :param std: The standard deviation (internal variance) of the clusters.
+    :param times: The array of time steps used in the simulation.
+    """
+    delta_t = 1 - np.exp(-2*t)
+    Gamma_t = delta_t + std**2*np.exp(-2*t)
+    mu_vec = torch.ones(dim) * mu
+    y_m = torch.matmul(mu_vec, y)
+    x = 2 * np.exp(-t) / Gamma_t * y_m
+    return 1 / (1 + np.exp(-x))
