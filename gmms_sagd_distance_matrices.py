@@ -6,10 +6,11 @@ import sys
 import torch
 from joblib import Parallel, delayed
 from pathlib import Path
+
 from scipy.spatial.distance import pdist, squareform
 from scipy.stats import wasserstein_distance
 from tqdm import tqdm
-
+from typing import Any
 from adaptive_knn import AdaptiveKNNGraph
 from clustering import cluster_distance_matrix
 from ou_model import backward, theoretical_ts, centers
@@ -18,7 +19,7 @@ from stats import normalize
 from distances import CTD_matrix
 
 
-def setup_logging(exp_path, args) -> logging.Logger:
+def setup_logging(exp_path: Path, args) -> logging.Logger:
     log_file = exp_path / "settings.log"
 
     logging.basicConfig(
@@ -45,30 +46,33 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--n_steps", type=int, default=1000)
     parser.add_argument("--T", type=float, default=10.0)
     parser.add_argument("--mu", type=float, default=4.0)
+    parser.add_argument("--threads", type=int, default=20)
+    parser.add_argument("--exp_name", type=str, default="exp_04")
+    parser.add_argument("--ds", type=int, nargs="+")
 
     parser.add_argument("--kernel", type=str, default="gaussian",
-                        choices=["gaussian", "inverse_sq_euclidean_d"])
+                        choices=["gaussian", "inverse_sq_euclidean_d"]
+                        )
+
     parser.add_argument("--data_model", type=str, default="bimodal",
                         choices=["bimodal", "hierarchical"]
                         )
-    parser.add_argument("--laplacian", type=str, default="unnormalized")
     parser.add_argument("--norm_type", type=str, default="norm_wrt_volume",
                         choices=["norm_wrt_volume", "norm_wrt_avg_ctd", "scale_and_shift",
                                  "log_scale_and_shift", "log_global_scale_and_shift"]
                         )
+    parser.add_argument("--laplacian", type=str, default="unnormalized")
     parser.add_argument("--distance", type=str, default="SAGD", choices=["SAGD", "SGD"])
+
     parser.add_argument("--inject_edges", action="store_true", default=False)
     parser.add_argument("--clipping", action="store_true", default=False)
     parser.add_argument("--generate_sasne_embedding", action="store_true", default=False)
+
     parser.add_argument("--hierarchical_weights", action="store_true", default=False)
     parser.add_argument("--hierarchical_sigma", default=[1, 1, 1, 1, 1, 1])
     parser.add_argument("--hierarchical_clusters_size", default=[400, 200, 100, 300, 150, 350])
     parser.add_argument("--mu_macro", type=float, default=8)
     parser.add_argument("--mu_micro", type=float, default=6)
-
-    parser.add_argument("--threads", type=int, default=20)
-    parser.add_argument("--exp_name", type=str, default="exp_04")
-    parser.add_argument("--ds", type=int, nargs="+", help="Explicit list of dimensions to run")
 
     args = parser.parse_args()
     return args
@@ -90,8 +94,8 @@ def knn_job(
         data: np.ndarray,
         edges_to_inject: list,
         kernel: str,
-        sigma: float=None
-) -> np.ndarray:
+        sigma: Any=None
+) -> tuple:
     knn_obj = AdaptiveKNNGraph(
         data=data,
         edges_to_inject=edges_to_inject,
@@ -102,8 +106,8 @@ def knn_job(
 
 
 def fetch_weights(
-        args: argparse.Namespace
-):
+        args:   argparse.Namespace
+) -> np.ndarray | None:
     if args.data_model == 'hierarchical' and args.hierarchical_weights:
         return args.hierarchical_clusters_size / np.sum(args.hierarchical_clusters_size)
     return None
@@ -113,14 +117,14 @@ def diffuse_job(
         history_file: Path,
         dim: int,
         args: argparse.Namespace,
-        times: list,
+        times: np.ndarray,
         dt: float,
         snap_time_indices: list,
         mu_star: float,
         std: float,
-        ts_theoretical: float,
+        ts_theoretical: float | None,
         logger: logging.Logger,
-) -> np.ndarray:
+) -> dict:
     weights = fetch_weights(args=args)
     if not history_file.exists():
         history = {}
@@ -164,7 +168,7 @@ def construct_graph_job(
         ws_file: Path,
         args: argparse.Namespace,
         history: dict,
-        edges_to_inject: list,
+        edges_to_inject: np.ndarray | None,
         logger: logging.Logger,
 ):
     time_snaps = list(history.keys())
@@ -198,7 +202,7 @@ def construct_graph_job(
 def ctds_job(
         ctd_file: Path,
         args: argparse.Namespace,
-        w_results: dict,
+        w_results: list,
         time_snaps: list,
         dim: int,
         logger: logging.Logger,
@@ -208,7 +212,7 @@ def ctds_job(
             delayed(ctd_job)(W_i, args.laplacian)
             for W_i in tqdm(w_results, total=len(w_results), desc=f"[D={dim}] CTD Logic")
         )
-        all_log_ctds = []
+        all_log_ctds = None
         if args.norm_type == "log_global_scale_and_shift":
             all_log_ctds = np.concatenate([np.log1p(triu_i) for triu_i in ctds])
         ctds_dict = {
@@ -245,7 +249,7 @@ def sagd_job(
     pairs: list,
     args: argparse.Namespace,
     logger: logging.Logger
-) -> np.array:
+) -> np.ndarray:
     if not sagd_file.exists():
         norm_ctds = [value['norm_ctds'] for value in ctds_dict.values()]
         num_graphs = len(norm_ctds)
@@ -392,6 +396,8 @@ def main():
         elif args.data_model=="hierarchical":
             mu_star = centers(d=d, mu_macro=args.mu_macro, mu_micro=args.mu_micro)
             std = args.hierarchical_sigma
+        else:
+            raise NotImplementedError
 
         path = exp_path / f"D{d}_N{args.n_samples}_T{int(args.T)}/"
         path.mkdir(parents=True, exist_ok=True)
@@ -416,7 +422,7 @@ def main():
         time_snaps = list(history.keys())
 
         # 2. Graph Construction
-        edges_to_inject = []
+        edges_to_inject = None
         if args.inject_edges:
             num_nodes = int(args.n_samples * 0.02)
             edges_to_inject = np.random.permutation(args.n_samples)[:num_nodes].reshape(-1, 2)
