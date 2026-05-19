@@ -13,7 +13,6 @@ from scipy.stats import wasserstein_distance
 from stats import normalize
 from tqdm import tqdm
 
-from SASNE.SASNE import SASNE
 from adaptive_knn import AdaptiveKNNGraph
 from clustering import cluster_distance_matrix
 from ou_model import backward, theoretical_ts
@@ -296,6 +295,10 @@ def clustering_job(
             method="dp"
         )
         joblib.dump(breakpoints, output_file, compress=3)
+    else:
+        logger.info(f"[D={dim}] Breakpoints found. Loading...")
+        breakpoints = joblib.load(output_file)
+    return breakpoints
 
 
 def sasne_job(
@@ -303,6 +306,7 @@ def sasne_job(
         distance_matrix: np.ndarray,
 ):
         if not sasne_file_path.exists():
+            from SASNE.SASNE import SASNE
             embedding, Z = SASNE(data=distance_matrix)
             joblib.dump({
                 "embedding": embedding,
@@ -425,7 +429,7 @@ def main():
             raise NotImplementedError
 
         # 5. Clustering
-        clustering_job(
+        _ = clustering_job(
             distance_matrix=distance_matrix,
             dim=d,
             output_file=cluster_file,
