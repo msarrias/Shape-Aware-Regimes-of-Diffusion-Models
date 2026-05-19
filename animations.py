@@ -98,17 +98,15 @@ def create_synchronized_3d_animation(
     ax_emb2.zaxis.pane.set_visible(False)
 
     # initial scatter
+    point_colors = [colors_inner[l] for l in node_labels]
     sc1 = ax_emb1.scatter([], [], [], s=15, alpha=0.6)
     sc2 = ax_emb2.scatter([], [], [], s=15, alpha=0.6)
 
     def update_scatter(sc, ax, pos):
-        sc.remove()
-        new_sc = ax.scatter(
-            pos[:, 0], pos[:, 1], pos[:, 2],
-            c=[colors_inner[l] for l in node_labels],
-            s=15, alpha=0.6
-        )
-        return new_sc
+        sc._offsets3d = (pos[:, 0], pos[:, 1], pos[:, 2])
+        sc.set_facecolor(point_colors)
+        sc.set_edgecolor(point_colors)
+        return sc
 
     sc1 = update_scatter(sc1, ax_emb1, history[0])
     sc2 = update_scatter(sc2, ax_emb2, history[0])
