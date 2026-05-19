@@ -48,16 +48,16 @@ def create_synchronized_3d_animation(
         log_inner        = {cls: np.log1p(v) for cls, v in intra_per_cluster.items()}
         return log_intra_bottom, log_intra_top, log_inter_major, log_inner
 
+    hist_cache = [compute_hist_data(h) for h in history]
+
     # compute bins from all frames combined
     all_log = np.concatenate([
-        np.concatenate(list(compute_hist_data(h)[:3]) + list(compute_hist_data(h)[3].values()))
-        for h in history
+        np.concatenate(list(hist_data[:3]) + list(hist_data[3].values()))
+        for hist_data in hist_cache
     ])
     bins        = np.linspace(all_log.min(), all_log.max(), 51)
     bin_centers = 0.5 * (bins[:-1] + bins[1:])
     bin_width   = bins[1] - bins[0]
-
-    hist_cache = [compute_hist_data(h) for h in history]
 
     # ── normalize SAGD matrix ─────────────────────────────────────────────────
     W_min, W_max = SAGD_dist_matrix.min(), SAGD_dist_matrix.max()
