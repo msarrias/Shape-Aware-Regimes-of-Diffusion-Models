@@ -20,6 +20,14 @@ from distances import CTD_matrix
 
 
 def setup_logging(exp_path: Path, args) -> logging.Logger:
+    HIERARCHICAL_PARAMS = {
+        "hierarchical_weights",
+        "hierarchical_sigma",
+        "hierarchical_clusters_size",
+        "mu_macro",
+        "mu_micro"
+    }
+
     log_file = exp_path / "settings.log"
 
     logging.basicConfig(
@@ -33,6 +41,8 @@ def setup_logging(exp_path: Path, args) -> logging.Logger:
     logger = logging.getLogger()
     logger.info("=== Simulation Settings ===")
     for arg, value in vars(args).items():
+        if args.data_model == "bimodal_gaussian" and arg in HIERARCHICAL_PARAMS:
+            continue
         logger.info(f"{arg}: {value}")
     logger.info("===========================\n")
     return logger
@@ -337,18 +347,31 @@ def sasne_job(
             }, sasne_file_path, compress=3)
 
 
-def get_snap_times(args, times, ds):
-    if args.data_model=="bimodal_gaussian":
-        # We want every dimension to share the same snapshots,
-        # including all theoretical ts points
+def get_snap_times(
+        args: argparse.Namespace,
+        times: list,
+        ds: list,
+):
+    if args.data_model == "bimodal_gaussian":
+        # include theoretical t_s for each dimension
         ts_indices = []
         for d in ds:
             mu_star = torch.ones(d) * args.mu
             _, ts_idx = theoretical_ts(mu_star, 1.0, times)
             ts_indices.append(ts_idx)
 
+        # find the largest t_s index across all dimensions
+        # and concentrate snapshots around it
+        max_ts_idx = max(ts_indices)
+
+        # coarse indices for t > t_s_max
+        coarse = list(range(max_ts_idx, len(times), 10))
+
+        # dense indices for t <= t_s_max
+        dense  = list(range(0, max_ts_idx, 3))
+
         return sorted(
-            list(set(list(range(0, len(times), 10)) + ts_indices + [len(times) - 1])),
+            list(set(coarse + dense + ts_indices + [len(times) - 1])),
             reverse=True
         )
     else:
