@@ -7,7 +7,7 @@ from matplotlib.animation import FuncAnimation
 from mpl_toolkits.mplot3d.art3d import Poly3DCollection
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 from matplotlib import pyplot as plt
-
+import matplotlib as mpl
 
 def plot_data_distribution(
         step_idx,
@@ -352,7 +352,7 @@ def plot_sagd_heatmap(
         save_fig_path=None
 ):
     plt.figure(figsize=(10, 8))
-    ax = sns.heatmap(W, cmap='viridis', robust=True)
+    ax = sns.heatmap(W, cmap='viridis')
     n_samples = len(time_vector)
     indices = np.linspace(0, n_samples - 1, 8, dtype=int)
 
@@ -382,35 +382,24 @@ def _draw_sagd_heatmap_with_prob(
         ax_hm,
         W,
         time_vector,
-        ts,
-        ts_idx,
         d,
-        mu,
-        std,
+        ts=None,        
+        ts_idx=None,    
+        distance='SAGD',
+        mu=None,
+        std=None,
         tsagd=None,
         tsagd_idx=None,
         show_ylabel=True,
         show_legend=True,
+        show_prob=True,
 ):
-    """
-    Draw a square SAGD heatmap into ``ax_hm`` and attach a same-cluster
-    probability marginal on top and a colorbar on the right via an
-    ``axes_grid1`` divider, so both track the heatmap's rendered size
-    (jointplot-style).
-
-    If ``tsagd`` and ``tsagd_idx`` are given, an additional green dashed
-    marker is drawn at that time (heatmap v/h-line and prob v-line).
-    """
     from ou_model import same_cluster_prob
-
-    time_arr = np.asarray(time_vector)
-    probs = same_cluster_prob(d, mu, std, time_arr)
-    n_samples = len(time_arr)
-
+    n_samples = len(time_vector)
     W_min, W_max = W.min(), W.max()
-    W_norm = (W - W_min) / (W_max - W_min)
-    sns.heatmap(W_norm, cmap='viridis', robust=True, ax=ax_hm, cbar=False, square=True)
-
+    W_norm = (W - W_min) / (W_max - W_min) if W_max > W_min else W - W_min
+    sns.heatmap(W_norm, cmap='viridis', ax=ax_hm, cbar=False, square=True,
+                vmin=0, vmax=1)
     heat_indices = np.linspace(0, n_samples - 1, 8, dtype=int)
     tick_labels = [f"{time_vector[idx]:.2f}" for idx in heat_indices]
     ax_hm.set_xticks(heat_indices + 0.5)
@@ -418,9 +407,10 @@ def _draw_sagd_heatmap_with_prob(
     ax_hm.set_yticks(heat_indices + 0.5)
     ax_hm.set_yticklabels(tick_labels, rotation=0)
 
-    ts_r = round(ts, 2)
-    ax_hm.axvline(x=ts_idx + 0.5, color='red', linestyle='--', alpha=0.8, label=f'$t_s = {ts_r:.2f}$')
-    ax_hm.axhline(y=ts_idx + 0.5, color='red', linestyle='--', alpha=0.8)
+    if ts is not None and ts_idx is not None:
+        ts_r = round(ts, 2)
+        ax_hm.axvline(x=ts_idx + 0.5, color='red', linestyle='--', alpha=0.8, label=f'$t_s = {ts_r:.2f}$')
+        ax_hm.axhline(y=ts_idx + 0.5, color='red', linestyle='--', alpha=0.8)
 
     if tsagd is not None and tsagd_idx is not None:
         tsagd_r = round(tsagd, 2)
@@ -434,34 +424,42 @@ def _draw_sagd_heatmap_with_prob(
         ax_hm.legend(loc='upper left')
 
     divider = make_axes_locatable(ax_hm)
-    ax_prob = divider.append_axes("top", size="22%", pad=0.2, sharex=ax_hm)
     cbar_ax = divider.append_axes("right", size="4%", pad=0.1)
+    norm = mpl.colors.Normalize(vmin=0, vmax=1)
+    sm = mpl.cm.ScalarMappable(cmap='viridis', norm=norm)
+    plt.colorbar(sm, cax=cbar_ax)
 
-    plt.colorbar(ax_hm.collections[0], cax=cbar_ax)
-
-    x_positions = np.arange(n_samples) + 0.5
-    ax_prob.plot(x_positions, probs, color='steelblue', lw=1.5)
-    ax_prob.axvline(x=ts_idx + 0.5, color='red', linestyle='--', alpha=0.8)
-    if tsagd is not None and tsagd_idx is not None:
-        ax_prob.axvline(x=tsagd_idx + 0.5, color='orange', linestyle='--', alpha=0.8)
-    ax_prob.set_ylim(0.48, 1.02)
-    ax_prob.tick_params(axis='x', which='both', bottom=False, labelbottom=False)
-    ax_prob.set_ylabel("φ(t)", fontsize=12)
-    ax_prob.set_title(f"SAGD Distance Matrix (d={d})", fontsize=14)
-    sns.despine(ax=ax_prob, top=True, right=True, bottom=True, left=False)
-
+    if show_prob:
+        time_arr = np.asarray(time_vector)
+        probs = same_cluster_prob(d, mu, std, time_arr)
+        ax_prob = divider.append_axes("top", size="22%", pad=0.2, sharex=ax_hm)
+        x_positions = np.arange(n_samples) + 0.5
+        ax_prob.plot(x_positions, probs, color='steelblue', lw=1.5)
+        if ts is not None and ts_idx is not None:
+            ax_prob.axvline(x=ts_idx + 0.5, color='red', linestyle='--', alpha=0.8)
+        if tsagd is not None and tsagd_idx is not None:
+            ax_prob.axvline(x=tsagd_idx + 0.5, color='orange', linestyle='--', alpha=0.8)
+        ax_prob.set_ylim(0.48, 1.02)
+        ax_prob.tick_params(axis='x', which='both', bottom=False, labelbottom=False)
+        ax_prob.set_ylabel("φ(t)", fontsize=12)
+        ax_prob.set_title(f"{distance} Distance Matrix (d={d})", fontsize=14)
+        sns.despine(ax=ax_prob, top=True, right=True, bottom=True, left=False)
+    else:
+        ax_hm.set_title(f"{distance} Distance Matrix (d={d})", fontsize=14)
 
 def plot_sagd_heatmap_with_prob(
-        W,
-        time_vector,
-        ts,
-        ts_idx,
-        d,
-        mu,
-        std,
-        tsagd=None,
-        tsagd_idx=None,
-        save_fig_path=None
+    W,
+    time_vector,
+    ts,
+    ts_idx,
+    d,
+    mu,
+    std,
+    distance,
+    show_prob=True,
+    tsagd=None,
+    tsagd_idx=None,
+    save_fig_path=None
 ):
     fig, ax_hm = plt.subplots(figsize=(8, 9))
     _draw_sagd_heatmap_with_prob(
@@ -476,7 +474,9 @@ def plot_sagd_heatmap_with_prob(
         tsagd=tsagd,
         tsagd_idx=tsagd_idx,
         show_ylabel=True,
-        show_legend=True
+        show_legend=True,
+        show_prob=show_prob,
+         distance=distance
     )
     if save_fig_path:
         plt.savefig(save_fig_path, dpi=300, bbox_inches='tight')
@@ -484,14 +484,16 @@ def plot_sagd_heatmap_with_prob(
 
 
 def plot_sagd_heatmap_row_with_prob(
-        W_list: list,
-        d_list: list,
-        time_snaps_vector_list: list,
-        ts_tuple_list: list,
-        mu,
-        std,
-        tsagd_tuple_list=None,
-        save_fig_path=None,
+    W_list: list,
+    d_list: list,
+    time_snaps_vector_list: list,
+    ts_tuple_list: list,
+    mu,
+    std,
+    distance='SAGD',
+    tsagd_tuple_list=None,
+    save_fig_path=None,
+    show_prob=False,
 ):
     """
     Row of (probability curve on top, SAGD heatmap below) jointplot-style
@@ -516,9 +518,12 @@ def plot_sagd_heatmap_row_with_prob(
     if tsagd_tuple_list is None:
         tsagd_tuple_list = [None] * num_plots
 
-    for i, (W, d, time_vec, ts_tuple, tsagd_tuple) in enumerate(
-            zip(W_list, d_list, time_snaps_vector_list, ts_tuple_list, tsagd_tuple_list)):
-        ts, ts_idx = ts_tuple
+    for i, (W, d, time_vec, tsagd_tuple) in enumerate(
+            zip(W_list, d_list, time_snaps_vector_list, tsagd_tuple_list)):
+        if ts_tuple_list:
+            ts, ts_idx = ts_tuple_list[i]
+        else:
+            ts, ts_idx = None, None
         if tsagd_tuple is None:
             tsagd, tsagd_idx = None, None
         else:
@@ -536,6 +541,8 @@ def plot_sagd_heatmap_row_with_prob(
             tsagd_idx=tsagd_idx,
             show_ylabel=(i == 0),
             show_legend=True,
+            show_prob=show_prob,
+            distance=distance
         )
 
     if save_fig_path:
