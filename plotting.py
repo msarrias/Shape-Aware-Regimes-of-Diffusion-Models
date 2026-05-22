@@ -7,7 +7,8 @@ from matplotlib.animation import FuncAnimation
 from mpl_toolkits.mplot3d.art3d import Poly3DCollection
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 from matplotlib import pyplot as plt
-import matplotlib as mpl
+from matplotlib.cm import ScalarMappable
+from matplotlib.colors import Normalize
 
 def plot_data_distribution(
         step_idx,
@@ -308,14 +309,12 @@ def plot_sagd_heatmap_row(
         W_min, W_max = W.min(), W.max()
         ## Handle cases where min might equal max to avoid division by zero
         W_norm = (W - W_min) / (W_max - W_min) if W_max > W_min else W - W_min
-        # W_norm = np.clip(W / np.percentile(W, 95), 0, 1)
 
         n_samples = len(time_snaps_vector)
         heat_indices = np.linspace(0, n_samples - 1, 8, dtype=int)
         tick_labels = [f"{time_snaps_vector[idx]:.2f}" for idx in heat_indices]
 
-        # 2. Plot with a fixed 0-1 colorbar for consistent relative comparison
-
+        # 2. Plot with a fixed 0-1 colorbar
         sns.heatmap(W_norm, cmap='viridis', ax=ax_heat, vmin=0, vmax=1, cbar_kws={'shrink': 0.8})
         # Heatmap Ticks
         ax_heat.set_xticks(heat_indices + 0.5)
@@ -383,8 +382,8 @@ def _draw_sagd_heatmap_with_prob(
         W,
         time_vector,
         d,
-        ts=None,        
-        ts_idx=None,    
+        ts=None,
+        ts_idx=None,
         distance='SAGD',
         mu=None,
         std=None,
@@ -393,8 +392,11 @@ def _draw_sagd_heatmap_with_prob(
         show_ylabel=True,
         show_legend=True,
         show_prob=True,
+        CTDs=None,
+        n_uniform=100,
 ):
     from ou_model import same_cluster_prob
+
     n_samples = len(time_vector)
     W_min, W_max = W.min(), W.max()
     W_norm = (W - W_min) / (W_max - W_min) if W_max > W_min else W - W_min
@@ -425,8 +427,8 @@ def _draw_sagd_heatmap_with_prob(
 
     divider = make_axes_locatable(ax_hm)
     cbar_ax = divider.append_axes("right", size="4%", pad=0.1)
-    norm = mpl.colors.Normalize(vmin=0, vmax=1)
-    sm = mpl.cm.ScalarMappable(cmap='viridis', norm=norm)
+    norm = Normalize(vmin=0, vmax=1)
+    sm = ScalarMappable(cmap='viridis', norm=norm)
     plt.colorbar(sm, cax=cbar_ax)
 
     if show_prob:
@@ -446,6 +448,51 @@ def _draw_sagd_heatmap_with_prob(
         sns.despine(ax=ax_prob, top=True, right=True, bottom=True, left=False)
     else:
         ax_hm.set_title(f"{distance} Distance Matrix (d={d})", fontsize=14)
+
+    if CTDs is not None:
+        time_array = np.asarray(time_vector)
+        t_values   = sorted(CTDs['CTDs'].keys(), reverse=True)
+        t_arr      = np.array(t_values)
+        means      = [np.mean(np.array(CTDs['CTDs'][t]['norm_ctds']))
+                      for t in t_values]
+        variances  = [np.var(np.array(CTDs['CTDs'][t]['norm_ctds']))
+                      for t in t_values]
+
+        # interpolate onto uniform grid
+        t_uniform   = np.linspace(t_arr.max(), t_arr.min(), n_uniform)
+        means_u     = np.interp(t_uniform, t_arr[::-1], np.array(means)[::-1])
+        variances_u = np.interp(t_uniform, t_arr[::-1], np.array(variances)[::-1])
+        x_uniform   = np.array([
+            np.argmin(np.abs(time_array - t)) + 0.5
+            for t in t_uniform
+        ])
+
+        ax_mom  = divider.append_axes("bottom", size="30%", pad=0.8,
+                                       sharex=ax_hm)
+        ax_mom2 = ax_mom.twinx()  # second y-axis for variance
+
+        ax_mom.plot(x_uniform, means_u, color='steelblue',
+                    linewidth=1.5, label='Mean')
+        ax_mom2.plot(x_uniform, variances_u, color='tomato',
+                     linewidth=1.5, label='Variance')
+
+        if ts is not None and ts_idx is not None:
+            ax_mom.axvline(x=ts_idx + 0.5, color='red',
+                           linestyle='--', alpha=0.8)
+        if tsagd is not None and tsagd_idx is not None:
+            ax_mom.axvline(x=tsagd_idx + 0.5, color='orange',
+                           linestyle='--', alpha=0.8)
+
+        ax_mom.set_xticks(heat_indices + 0.5)
+        ax_mom.set_xticklabels(tick_labels, rotation=45, fontsize=8)
+        ax_mom.set_xlabel("Time", fontsize=10)
+        ax_mom.tick_params(axis='y', labelcolor='steelblue')
+        ax_mom2.tick_params(axis='y', labelcolor='tomato')
+
+        ax_mom.set_ylabel("$\\mu_{CTD}$", fontsize=11, color='steelblue')
+        ax_mom2.set_ylabel("$\\sigma^2_{CTD}$", fontsize=11, color='tomato')
+        sns.despine(ax=ax_mom)
+
 
 def plot_sagd_heatmap_with_prob(
     W,
@@ -492,19 +539,10 @@ def plot_sagd_heatmap_row_with_prob(
     std,
     distance='SAGD',
     tsagd_tuple_list=None,
+    CTDs_list=None,
     save_fig_path=None,
     show_prob=False,
 ):
-    """
-    Row of (probability curve on top, SAGD heatmap below) jointplot-style
-    panels across dimensions. Each column's marginal and colorbar are pinned
-    to the heatmap's rendered size via an ``axes_grid1`` divider.
-
-    ``tsagd_tuple_list`` is an optional list aligned with ``W_list`` of
-    ``(tsagd, tsagd_idx)`` pairs (use ``None`` for columns without one).
-    Where provided, a green dashed marker is drawn alongside the red
-    speciation lines.
-    """
     num_plots = len(W_list)
     fig, axes = plt.subplots(
         nrows=1,
@@ -518,8 +556,12 @@ def plot_sagd_heatmap_row_with_prob(
     if tsagd_tuple_list is None:
         tsagd_tuple_list = [None] * num_plots
 
-    for i, (W, d, time_vec, tsagd_tuple) in enumerate(
-            zip(W_list, d_list, time_snaps_vector_list, tsagd_tuple_list)):
+    if CTDs_list is None:
+        CTDs_list = [None] * num_plots
+
+    for i, (W, d, time_vec, tsagd_tuple, CTDs) in enumerate(
+            zip(W_list, d_list, time_snaps_vector_list,
+                tsagd_tuple_list, CTDs_list)):
         if ts_tuple_list:
             ts, ts_idx = ts_tuple_list[i]
         else:
@@ -542,7 +584,8 @@ def plot_sagd_heatmap_row_with_prob(
             show_ylabel=(i == 0),
             show_legend=True,
             show_prob=show_prob,
-            distance=distance
+            distance=distance,
+            CTDs=CTDs,
         )
 
     if save_fig_path:
