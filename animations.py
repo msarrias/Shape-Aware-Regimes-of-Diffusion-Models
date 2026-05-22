@@ -1,15 +1,10 @@
 # Gemini wrote this for me.
 import numpy as np
-from matplotlib import cm
-import torch
 import seaborn as sns
 from matplotlib.animation import FuncAnimation
-from mpl_toolkits.mplot3d.art3d import Poly3DCollection
-from RRP import RRP
 from matplotlib import pyplot as plt
 import matplotlib.gridspec as gridspec
-from mpl_toolkits.mplot3d import Axes3D
-from matplotlib.colormaps import get_cmap
+from matplotlib.pyplot import get_cmap
 
 
 def create_synchronized_3d_animation(
