@@ -53,8 +53,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--kernel", type=str, default="gaussian",
                         choices=["gaussian", "inverse_sq_euclidean_d"]
                         )
-    parser.add_argument("--data_model", type=str, default="bimodal",
-                        choices=["bimodal", "hierarchical"]
+    parser.add_argument("--data_model", type=str, default="bimodal_gaussian",
+                        choices=["bimodal_gaussian", "hierarchical_gaussian"]
                         )
     parser.add_argument("--norm_type", type=str, default="norm_wrt_volume",
                         choices=["norm_wrt_volume", "norm_wrt_avg_ctd", "scale_and_shift",
@@ -71,7 +71,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--hierarchical_sigma", default=[1, 1, 1, 1, 1, 1])
     parser.add_argument("--hierarchical_clusters_size", default=[400, 200, 100, 300, 150, 350])
     parser.add_argument("--mu_macro", type=float, default=8)
-    parser.add_argument("--mu_micro", type=float, default=6)
+    parser.add_argument("--mu_micro", type=float, default=4)
 
     args = parser.parse_args()
     return args
@@ -107,7 +107,7 @@ def knn_job(
 def fetch_weights(
         args:   argparse.Namespace
 ) -> np.ndarray | None:
-    if args.data_model == 'hierarchical' and args.hierarchical_weights:
+    if args.data_model == 'hierarchical_gaussian' and args.hierarchical_weights:
         return args.hierarchical_clusters_size / np.sum(args.hierarchical_clusters_size)
     return None
 
@@ -310,7 +310,7 @@ def clustering_job(
         logger: logging.Logger
 ):
     if not output_file.exists():
-        logger.info(f"[D={dim}] Clustering SAGD matrix")
+        logger.info(f"[D={dim}] Clustering distance matrix")
         breakpoints = cluster_distance_matrix(
             distances=distance_matrix,
             method="dp"
@@ -338,7 +338,7 @@ def sasne_job(
 
 
 def get_snap_times(args, times, ds):
-    if args.data_model=="bimodal":
+    if args.data_model=="bimodal_gaussian":
         # We want every dimension to share the same snapshots,
         # including all theoretical ts points
         ts_indices = []
@@ -382,17 +382,17 @@ def main():
     times = np.arange(0, args.T, dt)
     snap_time_indices = get_snap_times(args, times, ds)
     
-    if args.data_model=="hierarchical":
+    if args.data_model=="hierarchical_gaussian":
         assert args.n_samples == sum(args.hierarchical_clusters_size)
 
     for d in ds:
         t_s = None
-        if args.data_model=="bimodal":
+        if args.data_model=="bimodal_gaussian":
             mu_star = torch.ones(d) * args.mu
             std = 1.0
             t_s, _ = theoretical_ts(mu_star, std, times)
 
-        elif args.data_model=="hierarchical":
+        elif args.data_model=="hierarchical_gaussian":
             mu_star = centers(d=d, mu_macro=args.mu_macro, mu_micro=args.mu_micro)
             std = args.hierarchical_sigma
         else:
@@ -415,7 +415,7 @@ def main():
             snap_time_indices=snap_time_indices,
             mu_star=mu_star,
             std=std,
-            ts_theoretical=t_s if args.data_model == "bimodal" else None,
+            ts_theoretical=t_s if args.data_model == "bimodal_gaussian" else None,
             logger=logger
         )
         time_snaps = list(history.keys())
