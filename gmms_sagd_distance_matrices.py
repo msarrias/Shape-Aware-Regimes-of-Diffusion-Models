@@ -152,7 +152,7 @@ def diffuse_job(
                 "times": times
             }
         }
-        if args.data_model == 'bimodal':
+        if args.data_model == 'bimodal_gaussian':
             data_to_dump["params"]["ts_theoretical"] = ts_theoretical
         joblib.dump(data_to_dump, history_file, compress=3)
     else:
