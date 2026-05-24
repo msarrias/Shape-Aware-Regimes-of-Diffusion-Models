@@ -382,26 +382,26 @@ def _draw_sagd_heatmap_with_prob(
         W,
         time_vector,
         d,
-        ts=None,
-        ts_idx=None,
         distance='SAGD',
         mu=None,
         std=None,
+        ts=None,
         tsagd=None,
-        tsagd_idx=None,
+        t_star=None,
         show_ylabel=True,
         show_legend=True,
         show_prob=True,
-        CTDs=None,
-        n_uniform=100,
+        ctds=None
 ):
+    def find_time_idx(time_snaps, t):
+        return np.argmin(np.abs(time_snaps - t))
+
     from ou_model import same_cluster_prob
 
     n_samples = len(time_vector)
     W_min, W_max = W.min(), W.max()
     W_norm = (W - W_min) / (W_max - W_min) if W_max > W_min else W - W_min
-    sns.heatmap(W_norm, cmap='viridis', ax=ax_hm, cbar=False, square=True,
-                vmin=0, vmax=1)
+    sns.heatmap(W_norm, cmap='viridis', ax=ax_hm, cbar=False, square=True, vmin=0, vmax=1)
     heat_indices = np.linspace(0, n_samples - 1, 8, dtype=int)
     tick_labels = [f"{time_vector[idx]:.2f}" for idx in heat_indices]
     ax_hm.set_xticks(heat_indices + 0.5)
@@ -409,15 +409,23 @@ def _draw_sagd_heatmap_with_prob(
     ax_hm.set_yticks(heat_indices + 0.5)
     ax_hm.set_yticklabels(tick_labels, rotation=0)
 
-    if ts is not None and ts_idx is not None:
+    if ts is not None:
+        ts_idx = find_time_idx(time_vector, ts)
         ts_r = round(ts, 2)
         ax_hm.axvline(x=ts_idx + 0.5, color='red', linestyle='--', alpha=0.8, label=f'$t_s = {ts_r:.2f}$')
         ax_hm.axhline(y=ts_idx + 0.5, color='red', linestyle='--', alpha=0.8)
 
-    if tsagd is not None and tsagd_idx is not None:
+    if tsagd is not None:
+        tsagd_idx = find_time_idx(time_vector, tsagd)
         tsagd_r = round(tsagd, 2)
         ax_hm.axvline(x=tsagd_idx + 0.5, color='orange', linestyle='--', alpha=0.8, label=f'$t_{{SAGD}}={tsagd_r:.2f}$')
         ax_hm.axhline(y=tsagd_idx + 0.5, color='orange', linestyle='--', alpha=0.8)
+
+    if t_star is not None:
+        t_star_idx = find_time_idx(time_vector, t_star)
+        t_star_r = round(t_star, 2)
+        ax_hm.axvline(x=t_star_idx + 0.5, color='orange', linestyle='--', alpha=0.8, label=f'$t^*_{{SAGD}}={t_star_r:.2f}$')
+        ax_hm.axhline(y=t_star_idx + 0.5, color='orange', linestyle='--', alpha=0.8)
 
     ax_hm.set_xlabel("Time", fontsize=12)
     if show_ylabel:
@@ -437,10 +445,12 @@ def _draw_sagd_heatmap_with_prob(
         ax_prob = divider.append_axes("top", size="22%", pad=0.2, sharex=ax_hm)
         x_positions = np.arange(n_samples) + 0.5
         ax_prob.plot(x_positions, probs, color='steelblue', lw=1.5)
-        if ts is not None and ts_idx is not None:
+        if ts is not None:
             ax_prob.axvline(x=ts_idx + 0.5, color='red', linestyle='--', alpha=0.8)
-        if tsagd is not None and tsagd_idx is not None:
+        if tsagd is not None:
             ax_prob.axvline(x=tsagd_idx + 0.5, color='orange', linestyle='--', alpha=0.8)
+        if t_star is not None:
+            ax_prob.axvline(x=t_star_idx + 0.5, color='orange', linestyle='--', alpha=0.8)
         ax_prob.set_ylim(0.48, 1.02)
         ax_prob.tick_params(axis='x', which='both', bottom=False, labelbottom=False)
         ax_prob.set_ylabel("φ(t)", fontsize=12)
@@ -449,46 +459,35 @@ def _draw_sagd_heatmap_with_prob(
     else:
         ax_hm.set_title(f"{distance} Distance Matrix (d={d})", fontsize=14)
 
-    if CTDs is not None:
+    if ctds is not None:
         time_array = np.asarray(time_vector)
-        t_values   = sorted(CTDs['CTDs'].keys(), reverse=True)
-        t_arr      = np.array(t_values)
-        means      = [np.mean(np.array(CTDs['CTDs'][t]['norm_ctds']))
-                      for t in t_values]
-        variances  = [np.var(np.array(CTDs['CTDs'][t]['norm_ctds']))
-                      for t in t_values]
+        t_values = sorted(ctds['CTDs'].keys(), reverse=True)
+        t_arr = np.array(t_values)
+        means = [np.mean(np.array(ctds['CTDs'][t]['norm_ctds'])) for t in t_values]
+        variances = [np.var(np.array(ctds['CTDs'][t]['norm_ctds'])) for t in t_values]
 
-        # interpolate onto uniform grid
-        t_uniform   = np.linspace(t_arr.max(), t_arr.min(), n_uniform)
-        means_u     = np.interp(t_uniform, t_arr[::-1], np.array(means)[::-1])
-        variances_u = np.interp(t_uniform, t_arr[::-1], np.array(variances)[::-1])
-        x_uniform   = np.array([
+        # map each t value directly to its pixel position in the heatmap
+        x_positions = np.array([
             np.argmin(np.abs(time_array - t)) + 0.5
-            for t in t_uniform
+            for t in t_arr
         ])
+        ax_mom = divider.append_axes("bottom", size="30%", pad=0.8, sharex=ax_hm)
+        ax_mom2 = ax_mom.twinx()
+        ax_mom.plot(x_positions, means, color='steelblue', linewidth=1.5)
+        ax_mom2.plot(x_positions, variances, color='tomato', linewidth=1.5)
 
-        ax_mom  = divider.append_axes("bottom", size="30%", pad=0.8,
-                                       sharex=ax_hm)
-        ax_mom2 = ax_mom.twinx()  # second y-axis for variance
-
-        ax_mom.plot(x_uniform, means_u, color='steelblue',
-                    linewidth=1.5, label='Mean')
-        ax_mom2.plot(x_uniform, variances_u, color='tomato',
-                     linewidth=1.5, label='Variance')
-
-        if ts is not None and ts_idx is not None:
-            ax_mom.axvline(x=ts_idx + 0.5, color='red',
-                           linestyle='--', alpha=0.8)
-        if tsagd is not None and tsagd_idx is not None:
-            ax_mom.axvline(x=tsagd_idx + 0.5, color='orange',
-                           linestyle='--', alpha=0.8)
+        if ts is not None:
+            ax_mom.axvline(x=ts_idx + 0.5, color='red', linestyle='--', alpha=0.8)
+        if tsagd is not None:
+            ax_mom.axvline(x=tsagd_idx + 0.5, color='orange', linestyle='--', alpha=0.8)
+        if t_star is not None:
+            ax_mom.axvline(x=t_star_idx + 0.5, color='orange', linestyle='--', alpha=0.8)
 
         ax_mom.set_xticks(heat_indices + 0.5)
         ax_mom.set_xticklabels(tick_labels, rotation=45, fontsize=8)
         ax_mom.set_xlabel("Time", fontsize=10)
         ax_mom.tick_params(axis='y', labelcolor='steelblue')
         ax_mom2.tick_params(axis='y', labelcolor='tomato')
-
         ax_mom.set_ylabel("$\\mu_{CTD}$", fontsize=11, color='steelblue')
         ax_mom2.set_ylabel("$\\sigma^2_{CTD}$", fontsize=11, color='tomato')
         sns.despine(ax=ax_mom)
@@ -498,15 +497,14 @@ def plot_sagd_heatmap_with_prob(
     W,
     time_vector,
     ts,
-    ts_idx,
     d,
     mu,
     std,
     distance,
     show_prob=True,
     tsagd=None,
-    tsagd_idx=None,
-    save_fig_path=None
+    save_fig_path=None,
+    ctds=None,
 ):
     fig, ax_hm = plt.subplots(figsize=(8, 9))
     _draw_sagd_heatmap_with_prob(
@@ -514,16 +512,15 @@ def plot_sagd_heatmap_with_prob(
         W=W,
         time_vector=time_vector,
         ts=ts,
-        ts_idx=ts_idx,
         d=d,
         mu=mu,
         std=std,
         tsagd=tsagd,
-        tsagd_idx=tsagd_idx,
         show_ylabel=True,
         show_legend=True,
         show_prob=show_prob,
-         distance=distance
+         distance=distance,
+        ctds=ctds,
     )
     if save_fig_path:
         plt.savefig(save_fig_path, dpi=300, bbox_inches='tight')
@@ -534,12 +531,13 @@ def plot_sagd_heatmap_row_with_prob(
     W_list: list,
     d_list: list,
     time_snaps_vector_list: list,
-    ts_tuple_list: list,
     mu,
     std,
     distance='SAGD',
-    tsagd_tuple_list=None,
-    CTDs_list=None,
+    ts_list: list=None,
+    tsagd_list=None,
+    tstar_list=None,
+    ctds_list=None,
     save_fig_path=None,
     show_prob=False,
 ):
@@ -553,39 +551,22 @@ def plot_sagd_heatmap_row_with_prob(
     if num_plots == 1:
         axes = [axes]
 
-    if tsagd_tuple_list is None:
-        tsagd_tuple_list = [None] * num_plots
-
-    if CTDs_list is None:
-        CTDs_list = [None] * num_plots
-
-    for i, (W, d, time_vec, tsagd_tuple, CTDs) in enumerate(
-            zip(W_list, d_list, time_snaps_vector_list,
-                tsagd_tuple_list, CTDs_list)):
-        if ts_tuple_list:
-            ts, ts_idx = ts_tuple_list[i]
-        else:
-            ts, ts_idx = None, None
-        if tsagd_tuple is None:
-            tsagd, tsagd_idx = None, None
-        else:
-            tsagd, tsagd_idx = tsagd_tuple
+    for i, (W, d, time_vec) in enumerate(zip(W_list, d_list, time_snaps_vector_list)):
         _draw_sagd_heatmap_with_prob(
             ax_hm=axes[i],
             W=W,
             time_vector=time_vec,
-            ts=ts,
-            ts_idx=ts_idx,
             d=d,
             mu=mu,
             std=std,
-            tsagd=tsagd,
-            tsagd_idx=tsagd_idx,
+            ts=ts_list[i] if ts_list is not None else None,
+            tsagd=tsagd_list[i] if tsagd_list is not None else None,
+            t_star=tstar_list[i] if tstar_list is not None else None,
             show_ylabel=(i == 0),
             show_legend=True,
             show_prob=show_prob,
             distance=distance,
-            CTDs=CTDs,
+            ctds=ctds_list[i] if ctds_list is not None else None,
         )
 
     if save_fig_path:
@@ -617,10 +598,8 @@ def plot_breakpoint_and_speciation(
         phi_tsagd[i] = same_cluster_prob(d, mu, std, np.array([tsagd]))[0]
 
     fig, ax = plt.subplots(figsize=(8, 6))
-    ax.plot(d_list, 1 - phi_ts, marker='o', color='red',
-            label=r'$1 - φ(t_s)$')
-    ax.plot(d_list, 1 - phi_tsagd, marker='s', color='orange',
-            label=r'$1 - φ(t_{SAGD})$')
+    ax.plot(d_list, 1 - phi_ts, marker='o', color='red', label=r'$1 - φ(t_s)$')
+    ax.plot(d_list, 1 - phi_tsagd, marker='s', color='orange', label=r'$1 - φ(t_{SAGD})$')
     ax.set_yscale('log')
     ax.set_xscale('log', base=2)
     ax.set_xlim(min(d_list), max(d_list))
