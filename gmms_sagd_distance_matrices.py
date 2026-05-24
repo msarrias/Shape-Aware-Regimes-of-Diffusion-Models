@@ -76,6 +76,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--inject_edges", action="store_true", default=False)
     parser.add_argument("--clipping", action="store_true", default=False)
     parser.add_argument("--generate_sasne_embedding", action="store_true", default=False)
+    parser.add_argument("--sasne_dimension", type=int, default=2)
 
     parser.add_argument("--hierarchical_weights", action="store_true", default=False)
     parser.add_argument("--hierarchical_sigma", default=[1, 1, 1, 1, 1, 1])
@@ -335,13 +336,15 @@ def clustering_job(
 def sasne_job(
         sasne_file_path: Path,
         distance_matrix: np.ndarray,
+        dim: int = 2,
 ):
         if not sasne_file_path.exists():
             from SASNE.SASNE import SASNE
-            embedding, Z = SASNE(data=distance_matrix)
+            embedding, Z = SASNE(data=distance_matrix, n_components=dim)
             joblib.dump({
                 "embedding": embedding,
                 "Z": Z,
+                "dim": dim,
                 "D1": squareform(pdist(embedding)),
                 "D2": squareform(pdist(Z))
             }, sasne_file_path, compress=3)
@@ -507,7 +510,8 @@ def main():
             sasne_file= path / f"SASNE.jbl"
             sasne_job(
                 sasne_file_path=sasne_file,
-                distance_matrix=distance_matrix
+                distance_matrix=distance_matrix,
+                dim=args.sasne_dimension
             )
 
     logger.info('Done!')

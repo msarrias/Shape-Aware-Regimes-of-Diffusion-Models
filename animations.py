@@ -5,6 +5,7 @@ from matplotlib.animation import FuncAnimation
 from matplotlib import pyplot as plt
 import matplotlib.gridspec as gridspec
 from matplotlib.pyplot import get_cmap
+from mpl_toolkits.mplot3d import Axes3D
 
 
 def create_synchronized_3d_animation(
@@ -26,7 +27,7 @@ def create_synchronized_3d_animation(
     group_top    = [3, 4, 5]
     idx_bottom   = np.where(np.isin(node_arr, group_bottom))[0]
     idx_top      = np.where(np.isin(node_arr, group_top))[0]
-    cmap_inner   = get_cmap('viridis', 6)
+    cmap_inner   = plt.get_cmap('viridis', 6)
     colors_inner = [cmap_inner(i) for i in range(6)]
 
     # ── precompute per-frame histogram data ───────────────────────────────────
@@ -365,64 +366,92 @@ def create_animated_embedding(
         d,
         tsagd_idx,
         time_snaps,
-        save_path
+        save_path,
+        dim=2
 ):
-    n_frames = len(embedding)
-    fig, ax = plt.subplots(figsize=(8, 6))
-    ax.set_xlim(embedding[:, 0].min() - 1.5, embedding[:, 0].max() + 1.5)
-    ax.set_ylim(embedding[:, 1].min() - 1.5, embedding[:, 1].max() + 1.5)
-    ax.set_title(f"d={d}", fontsize=14)
-    ax.set_xlabel("SASNE1")
-    ax.set_ylabel("SASNE2")
+    if dim not in (2, 3):
+        raise ValueError(f"dim must be 2 or 3, got {dim}")
+    if embedding.shape[1] < dim:
+        raise ValueError(f"embedding has {embedding.shape[1]} columns, need at least {dim}")
 
-    sc = ax.scatter([], [], c=[], cmap='viridis', s=25, alpha=0.8, vmin=0, vmax=n_frames)
-    time_text = ax.text(0.05, 0.95, '', transform=ax.transAxes, fontweight='bold')
+    n_frames = len(embedding)
+    fig = plt.figure(figsize=(8, 6))
+
+    if dim == 2:
+        ax = fig.add_subplot(111)
+        ax.set_xlim(embedding[:, 0].min() - 1.5, embedding[:, 0].max() + 1.5)
+        ax.set_ylim(embedding[:, 1].min() - 1.5, embedding[:, 1].max() + 1.5)
+        ax.set_xlabel("SASNE1")
+        ax.set_ylabel("SASNE2")
+        sc = ax.scatter([], [], c=[], cmap='viridis', s=25, alpha=0.8, vmin=0, vmax=n_frames)
+        time_text = ax.text(0.05, 0.95, '', transform=ax.transAxes, fontweight='bold')
+    else:
+        ax = fig.add_subplot(111, projection='3d')
+        ax.set_xlim(embedding[:, 0].min() - 1.5, embedding[:, 0].max() + 1.5)
+        ax.set_ylim(embedding[:, 1].min() - 1.5, embedding[:, 1].max() + 1.5)
+        ax.set_zlim(embedding[:, 2].min() - 1.5, embedding[:, 2].max() + 1.5)
+        ax.set_xlabel("SASNE1")
+        ax.set_ylabel("SASNE2")
+        ax.set_zlabel("SASNE3")
+        sc = ax.scatter([], [], [], c=[], cmap='viridis', s=25, alpha=0.8, vmin=0, vmax=n_frames)
+        time_text = ax.text2D(0.05, 0.95, '', transform=ax.transAxes, fontweight='bold')
+
+    ax.set_title(f"d={d}", fontsize=14)
 
     milestones = {}
 
-    def add_pointer_ani(
-            ax,
-            index,
+    def add_pointer_ani(ax, index, label, color, offset):
+        if dim == 2:
+            return ax.annotate(
+                label,
+                xy=(embedding[index, 0], embedding[index, 1]),
+                xytext=offset,
+                textcoords='offset points',
+                arrowprops=dict(arrowstyle='->', color=color, lw=2),
+                bbox=dict(boxstyle="round,pad=0.3", fc="white", ec=color, alpha=0.8),
+                fontsize=10, fontweight='bold', color=color, zorder=10,
+            )
+        return ax.text(
+            embedding[index, 0], embedding[index, 1], embedding[index, 2],
             label,
-            color,
-            offset
-    ):
-        return ax.annotate(label, 
-                    xy=(embedding[index, 0], embedding[index, 1]), 
-                    xytext=offset, 
-                    textcoords='offset points',
-                    arrowprops=dict(arrowstyle='->', color=color, lw=2),
-                    bbox=dict(boxstyle="round,pad=0.3", fc="white", ec=color, alpha=0.8),
-                    fontsize=10, fontweight='bold', color=color, zorder=10)
+            color=color, fontsize=10, fontweight='bold',
+            bbox=dict(boxstyle="round,pad=0.3", fc="white", ec=color, alpha=0.8),
+            zorder=10,
+        )
 
-    def update(
-            frame
-    ):
-        current_data = embedding[:frame+1]
-        sc.set_offsets(current_data)
+    def update(frame):
+        current_data = embedding[:frame + 1]
+        if dim == 2:
+            sc.set_offsets(current_data[:, :2])
+        else:
+            sc._offsets3d = (
+                current_data[:, 0],
+                current_data[:, 1],
+                current_data[:, 2],
+            )
         sc.set_array(np.arange(frame + 1))
         current_t = time_snaps[frame]
         if frame == tsagd_idx:
             time_text.set_text(f"t = {current_t:.2f} * (Speciation)")
-            time_text.set_color('darkcyan') # Match the milestone color
+            time_text.set_color('darkcyan')
         else:
             time_text.set_text(f"t = {current_t:.2f}")
             time_text.set_color('black')
-            
-        # Annotation Logic
+
         if frame == 0 and 'start' not in milestones:
             milestones['start'] = add_pointer_ani(ax, 0, '$t=T$', 'red', (-80, 40))
-        
+
         if frame == tsagd_idx and 'ts' not in milestones:
             milestones['ts'] = add_pointer_ani(ax, tsagd_idx, '$t=t_{\mathrm{SAGD}}$', 'darkcyan', (40, 40))
-            
+
         if frame == n_frames - 1 and 'end' not in milestones:
             milestones['end'] = add_pointer_ani(ax, n_frames - 1, '$t=0$', 'orange', (20, -40))
-            
+
         return [sc, time_text] + list(milestones.values())
+
     ani = FuncAnimation(fig, update, frames=n_frames, interval=200, blit=False, repeat=False)
     animation_path = save_path + ".gif"
-    ani.save(animation_path, writer='pillow', fps=5, savefig_kwargs={'facecolor':'white'}, metadata={'loop': 1})
+    ani.save(animation_path, writer='pillow', fps=5, savefig_kwargs={'facecolor': 'white'}, metadata={'loop': 1})
     frame_path = save_path + ".png"
     fig.savefig(frame_path)
     plt.close()
