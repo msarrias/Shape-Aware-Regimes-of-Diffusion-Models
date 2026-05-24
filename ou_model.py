@@ -55,7 +55,35 @@ def centers(d, mu_micro, mu_macro, n_inner=3):
     return mu
 
 
-def score(x_t, t, mu_star, std, model='bimodal', weights=None):
+def find_third_phase_onset(
+        CTDs_raw,
+        time_snaps
+):
+    def minmax(x):
+        return (x - x.min()) / (x.max() - x.min())
+
+    mu_hat = [CTDs_raw[t]['norm_ctds'].mean() for t in time_snaps]
+    var_hat = [CTDs_raw[t]['norm_ctds'].var() for t in time_snaps]
+
+    t_arr = np.array(time_snaps)
+
+    mu_norm = minmax(np.array(mu_hat))
+    var_norm = minmax(np.array(var_hat))
+
+    diff = var_norm - mu_norm
+    crossings = np.where(np.diff(np.sign(diff)))[0]
+
+    if len(crossings) == 0:
+        print("No crossing found")
+        return None
+
+    idx = crossings[-1]
+    t_cross = t_arr[idx]
+
+    return t_cross
+
+
+def score(x_t, t, mu_star, std, model='bimodal_gaussian', weights=None):
     """
     Score function for two models, both working in arbitrary dimension d.
     x_t   : (d, N) tensor
@@ -71,7 +99,7 @@ def score(x_t, t, mu_star, std, model='bimodal', weights=None):
                        uniform weights are used
     """
 
-    if model == 'bimodal':
+    if model == 'bimodal_gaussian':
         ns = x_t.shape[1]
         delta_t = 1 - np.exp(-2*t)
         Gamma_t = delta_t + std**2 * np.exp(-2*t)
