@@ -13,7 +13,7 @@ from tqdm import tqdm
 from typing import Any
 from adaptive_knn import AdaptiveKNNGraph
 from clustering import cluster_distance_matrix
-from ou_model import backward, theoretical_ts, centers
+from ou_model import backward, theoretical_bimodal_gaussian_ts, centers
 from sgd import compute_sgd, _eigen_decompose_job
 from stats import normalize
 from distances import CTD_matrix
@@ -41,7 +41,7 @@ def setup_logging(exp_path: Path, args) -> logging.Logger:
     logger = logging.getLogger()
     logger.info("=== Simulation Settings ===")
     for arg, value in vars(args).items():
-        if args.data_model == "bimodal_gaussian" and arg in HIERARCHICAL_PARAMS:
+        if args.data_model != "hierarchical_gaussian" and arg in HIERARCHICAL_PARAMS:
             continue
         logger.info(f"{arg}: {value}")
     logger.info("===========================\n")
@@ -79,8 +79,12 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--sasne_dimension", type=int, default=2)
 
     parser.add_argument("--hierarchical_weights", action="store_true", default=False)
-    parser.add_argument("--hierarchical_sigma", default=[1, 1, 1, 1, 1, 1])
-    parser.add_argument("--hierarchical_clusters_size", default=[400, 200, 100, 300, 150, 350])
+    parser.add_argument("--hierarchical_sigma", type=float, nargs="+",
+                        default=[1, 1, 1, 1, 1, 1]
+                        )
+    parser.add_argument("--hierarchical_clusters_size", type=int, nargs="+",
+                        default=[400, 200, 100, 300, 150, 350]
+                        )
     parser.add_argument("--mu_macro", type=float, default=8)
     parser.add_argument("--mu_micro", type=float, default=4)
 
@@ -141,7 +145,7 @@ def diffuse_job(
         x_current = torch.randn(dim, args.n_samples)  # d x N
         history[args.T] = x_current.T.clone().numpy()  # N x d
 
-        for step in tqdm(reversed(range(args.n_steps)), total=args.n_steps, desc=f"[D={dim}] SDE"):
+        for step in tqdm(range(args.n_steps), total=args.n_steps, desc=f"[D={dim}] SDE"):
             t = times[step]
             x_current, _ = backward(
                 x_t=x_current,
@@ -227,7 +231,6 @@ def ctds_job(
             all_log_ctds = np.concatenate([np.log1p(triu_i) for triu_i in ctds])
         ctds_dict = {
             t: {
-                'ctds': triu_i,
                 'norm_ctds': normalize(
                     list_values=triu_i,
                     norm_type=args.norm_type,
@@ -360,7 +363,7 @@ def get_snap_times(
         ts_indices = []
         for d in ds:
             mu_star = torch.ones(d) * args.mu
-            _, ts_idx = theoretical_ts(mu_star, 1.0, times)
+            _, ts_idx = theoretical_bimodal_gaussian_ts(mu_star, 1.0, times)
             ts_indices.append(ts_idx)
 
         # find the largest t_s index across all dimensions
@@ -379,7 +382,7 @@ def get_snap_times(
         )
     else:
         return sorted(
-            list(set(list(range(0, len(times), 10)) + [len(times) - 1])),
+            list(set(list(range(0, len(times), 7)) + [len(times) - 1])),
             reverse=True
         )
 
@@ -405,7 +408,7 @@ def main():
 
     ds = args.ds
     dt = args.T / args.n_steps
-    times = np.arange(0, args.T, dt)
+    times = np.arange(args.T, 0, -dt)
     snap_time_indices = get_snap_times(args, times, ds)
     
     if args.data_model=="hierarchical_gaussian":
@@ -416,7 +419,7 @@ def main():
         if args.data_model=="bimodal_gaussian":
             mu_star = torch.ones(d) * args.mu
             std = 1.0
-            t_s, _ = theoretical_ts(mu_star, std, times)
+            t_s, _ = theoretical_bimodal_gaussian_ts(mu_star, std, times)
 
         elif args.data_model=="hierarchical_gaussian":
             mu_star = centers(d=d, mu_macro=args.mu_macro, mu_micro=args.mu_micro)
