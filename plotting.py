@@ -383,6 +383,7 @@ def _draw_sagd_heatmap_with_prob(
         time_vector,
         d,
         distance='SAGD',
+        model: str ='bimodal_gaussian',
         mu=None,
         std=None,
         ts=None,
@@ -391,6 +392,8 @@ def _draw_sagd_heatmap_with_prob(
         show_ylabel=True,
         show_legend=True,
         show_prob=True,
+        x_final:np.ndarray=None,
+        colors:list=None,
         ctds=None
 ):
     def find_time_idx(time_snaps, t):
@@ -492,6 +495,22 @@ def _draw_sagd_heatmap_with_prob(
         ax_mom2.set_ylabel("$\\sigma^2_{CTD}$", fontsize=11, color='tomato')
         sns.despine(ax=ax_mom)
 
+    if x_final is not None:
+        pad = 0.9 if ctds is not None else 0.8
+        ax_sc = divider.append_axes("bottom", size="60%", pad=pad)
+        if d == 2 and model=='bimodal_gaussian':
+            ax_sc.scatter(x_final[:, 0], x_final[:, 1], c=colors, s=3, alpha=0.6)
+            ax_sc.set_xlabel('x', fontsize=10)
+            ax_sc.set_ylabel('y', fontsize=10)
+        else:
+            from sklearn.manifold import TSNE
+            X_2d = TSNE(n_components=2).fit_transform(x_final)
+            ax_sc.scatter(X_2d[:, 0], X_2d[:, 1], c=colors, s=3, alpha=0.6)
+            ax_sc.set_xlabel(f'TSNE 1', fontsize=10)
+            ax_sc.set_ylabel(f'TSNE 2', fontsize=10)
+        ax_sc.set_title(f't=0 (d={d})', fontsize=10)
+        sns.despine(ax=ax_sc)
+
 
 def plot_sagd_heatmap_with_prob(
     W,
@@ -533,20 +552,23 @@ def plot_sagd_heatmap_row_with_prob(
     time_snaps_vector_list: list,
     mu,
     std,
-    distance='SAGD',
+    distance:str='SAGD',
+    model:str='bimodal_gaussian',
     ts_list: list=None,
     tsagd_list=None,
     tstar_list=None,
     ctds_list=None,
     save_fig_path=None,
     show_prob=False,
+    x_final_list=None,
+    colors_list=None,
 ):
     num_plots = len(W_list)
     fig, axes = plt.subplots(
         nrows=1,
         ncols=num_plots,
-        figsize=(6 * num_plots, 7.5),
-        gridspec_kw={'wspace': 0.5},
+        figsize=(6 * num_plots, 9.5),
+        gridspec_kw={'wspace': 0.05},
     )
     if num_plots == 1:
         axes = [axes]
@@ -567,6 +589,9 @@ def plot_sagd_heatmap_row_with_prob(
             show_prob=show_prob,
             distance=distance,
             ctds=ctds_list[i] if ctds_list is not None else None,
+            x_final=x_final_list[i] if x_final_list is not None else None,
+            colors=colors_list[i] if colors_list is not None else None,
+            model=model
         )
 
     if save_fig_path:
