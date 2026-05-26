@@ -63,9 +63,9 @@ class DiffusionConfig:
         self.beta  = self.linear_schedule()  # Linear or fixed
         self.alpha = 1 - self.beta
 
-        self.alpha_cumulative                = torch.cumprod(self.alpha, dim=0)
-        self.sqrt_alpha_cumulative           = torch.sqrt(self.alpha_cumulative)
-        self.one_by_sqrt_alpha               = 1. / torch.sqrt(self.alpha)
+        self.alpha_cumulative  = torch.cumprod(self.alpha, dim=0)
+        self.sqrt_alpha_cumulative = torch.sqrt(self.alpha_cumulative)
+        self.one_by_sqrt_alpha  = 1. / torch.sqrt(self.alpha)
         self.sqrt_one_minus_alpha_cumulative = torch.sqrt(1 - self.alpha_cumulative)
 
         self.times = 1 - np.linspace(0, 1.0, self.n_steps + 1)
@@ -89,15 +89,19 @@ class DiffusionConfig:
 # ====================================================================
 # Diffusion functions
 # ==================================================================== 
-def forward_diffusion(df, x0, timesteps, config):
+def forward_diffusion(
+        df,
+        x0,
+        timesteps, config
+):
     dim = len(x0.shape)
     # Generate noise realisation with the same size as a batch of images
     eps = torch.randn_like(x0)
     
     # Apply the forward diffusion kernel at times timesteps
-    mean    = get(df.sqrt_alpha_cumulative, timesteps, dim) * x0        # Image scaled by exp(-t)
+    mean = get(df.sqrt_alpha_cumulative, timesteps, dim) * x0        # Image scaled by exp(-t)
     std_dev = get(df.sqrt_one_minus_alpha_cumulative, timesteps, dim)   # Noise scaled by sqrt(1-exp(-2t))
-    sample_a  = mean + std_dev * eps                                    # step t of the forward process
+    sample_a = mean + std_dev * eps                                    # step t of the forward process
     
     # Return the noisy image and the noise realisation
     return sample_a, eps
@@ -109,7 +113,14 @@ def get_time_scale(config):
 
 
 @torch.no_grad()
-def sample_diffusion_from_noise(model, n_images=25, config=TrainingConfig(), df=DiffusionConfig(), dim=3, snap_steps=None):
+def sample_diffusion_from_noise(
+        model,
+        n_images=25,
+        config=TrainingConfig(),
+        df=DiffusionConfig(),
+        dim=3,
+        snap_steps=None
+):
     # Generate n_images starting points from N(0, 1)
     if dim == 4: # Assumes [B, C, H, W] for 2d
         x_init = torch.randn(n_images, config.IMG_SHAPE[0], config.IMG_SHAPE[1], 
@@ -134,8 +145,8 @@ def sample_diffusion_from_noise(model, n_images=25, config=TrainingConfig(), df=
         eps_ts = model(x, ts)
         
         # Get scaling quantities
-        beta_t                            = get(df.beta, ts, dim)
-        one_by_sqrt_alpha_t               = get(df.one_by_sqrt_alpha, ts, dim)
+        beta_t = get(df.beta, ts, dim)
+        one_by_sqrt_alpha_t = get(df.one_by_sqrt_alpha, ts, dim)
         sqrt_one_minus_alpha_cumulative_t = get(df.sqrt_one_minus_alpha_cumulative, ts, dim) 
         
         # Langevin sampling from Ho et al., 2020
@@ -152,9 +163,14 @@ def sample_diffusion_from_noise(model, n_images=25, config=TrainingConfig(), df=
 #==========================================
 # Training functions
 #==========================================
-def train_one_batch(X, model, optimizer, loss_fn, 
-                    config=TrainingConfig(), 
-                    sd=DiffusionConfig()):
+def train_one_batch(
+        X,
+        model,
+        optimizer,
+        loss_fn,
+        config=TrainingConfig(),
+        sd=DiffusionConfig()
+):
     model.train()
     
     # Generate random times
@@ -180,7 +196,18 @@ def train_one_batch(X, model, optimizer, loss_fn,
     return loss.detach().item(), X_t
 
 
-def train(model, trainloader, optimizer, config, sd, loss_fn, sweep=1., save_every=500, suffix='', data_snaps_steps=False):
+def train(
+        model,
+        trainloader,
+        optimizer,
+        config,
+        sd,
+        loss_fn,
+        sweep=1.,
+        save_every=500,
+        suffix='',
+        data_snaps_steps=False
+):
     
     n_steps = 0     # Number of SGD steps
     if data_snaps_steps:
@@ -204,11 +231,25 @@ def train(model, trainloader, optimizer, config, sd, loss_fn, sweep=1., save_eve
                 
                 # Sample a small batch and save it to check quality visually
                 if len(X.shape) == 4: # For images, assumes [B, C, H, W]
-                    samples, samples_init, history = sample_diffusion_from_noise(model, 2000, config, sd, dim=4, snap_steps=snap_data_steps)
+                    samples, samples_init, history = sample_diffusion_from_noise(
+                        model,
+                        2000,
+                        config,
+                        sd,
+                        dim=4,
+                        snap_steps=snap_data_steps
+                    )
                     if history:
-                        joblib.dump(history, config.path_save + 'History/' + suffix + 'History_{:d}.jbl'.format(n_steps), compress=3)
+                        joblib.dump(
+                            history,
+                            config.path_save + 'History/' + suffix + 'History_{:d}.jbl'.format(n_steps),
+                            compress=3
+                        )
                     fig = Plot.imshow(samples.cpu(), config.mean, config.std)
-                    fig.savefig(config.path_save + 'Images/' + suffix + 'Sample_{:d}.pdf'.format(n_steps), bbox_inches='tight')
+                    fig.savefig(
+                        config.path_save + 'Images/' + suffix + 'Sample_{:d}.pdf'.format(n_steps),
+                        bbox_inches='tight'
+                    )
                     plt.close('all')
             # Update the bar
             bar.set_description(f'loss: {loss:.5f}, n_steps: {n_steps:d}')
