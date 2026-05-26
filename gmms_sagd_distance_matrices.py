@@ -442,7 +442,7 @@ def run_pipeline(
 
 def run_mnist(exp_path: Path, args: argparse.Namespace, logger: logging.Logger) -> None:
     for subdir in (d for d in exp_path.iterdir() if d.is_dir()):
-        logger.info(f"Running diffusion for MNIST: {subdir}")
+        logger.info(f"Running diffusion for MNIST: {subdir.name}")
         history = joblib.load(subdir / "history.jbl")
         history = flatten_mnist_history(history)
         run_pipeline(path=subdir, history=history, args=args, logger=logger)    
