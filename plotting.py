@@ -397,6 +397,7 @@ def _draw_sagd_heatmap_with_prob(
         ctds=None
 ):
     def find_time_idx(time_snaps, t):
+        time_snaps = np.asarray(time_snaps, dtype=float)
         return np.argmin(np.abs(time_snaps - t))
 
     from ou_model import same_cluster_prob
@@ -457,7 +458,10 @@ def _draw_sagd_heatmap_with_prob(
         ax_prob.set_ylim(0.48, 1.02)
         ax_prob.tick_params(axis='x', which='both', bottom=False, labelbottom=False)
         ax_prob.set_ylabel("φ(t)", fontsize=12)
-        ax_prob.set_title(f"{distance} Distance Matrix (d={d})", fontsize=14)
+        if d:
+            ax_prob.set_title(f"{distance} Distance Matrix (d={d})", fontsize=14)
+        else:
+            ax_prob.set_title(f"{distance} Distance Matrix (d={d})", fontsize=14)
         sns.despine(ax=ax_prob, top=True, right=True, bottom=True, left=False)
     else:
         ax_hm.set_title(f"{distance} Distance Matrix (d={d})", fontsize=14)
@@ -508,7 +512,10 @@ def _draw_sagd_heatmap_with_prob(
             ax_sc.scatter(X_2d[:, 0], X_2d[:, 1], c=colors, s=3, alpha=0.6)
             ax_sc.set_xlabel(f'TSNE 1', fontsize=10)
             ax_sc.set_ylabel(f'TSNE 2', fontsize=10)
-        ax_sc.set_title(f't=0 (d={d})', fontsize=10)
+        if d:
+            ax_sc.set_title(f't=0 (d={d})', fontsize=10)
+        else:
+            ax_sc.set_title(f't=0', fontsize=10)
         sns.despine(ax=ax_sc)
 
 
