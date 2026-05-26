@@ -70,7 +70,7 @@ def parse_args() -> argparse.Namespace:
         "--data_model",
         type=str,
         default="bimodal_gaussian",
-        choices=["bimodal_gaussian", "hierarchical_gaussian", "MNIST"],
+        choices=["bimodal_gaussian", "hierarchical_gaussian", "mnist_unet_diffusion"],
     )
     parser.add_argument(
         "--norm_type",
@@ -425,7 +425,7 @@ def run_pipeline(
         raise NotImplementedError(f"Unknown distance: {args.distance}")
 
     # 3. Clustering
-    clustering_job(
+    _ = clustering_job(
         distance_matrix=distance_matrix,
         output_file=path / "clusters.jbl",
         logger=logger,
@@ -496,7 +496,7 @@ def main() -> None:
 
     logger = setup_logging(exp_path, args)
 
-    if args.data_model == "MNIST":
+    if args.data_model == "mnist_unet_diffusion":
         run_mnist(exp_path, args, logger)
     else:
         run_synthetic(exp_path, args, logger)
