@@ -45,7 +45,7 @@ for fname, dst in [
 # ====================================================================
 # Data
 # ====================================================================
-trainset, testset = loader.load_MNIST(config, loadtest=True, include_list=[0, 1, 8], props=[1/3, 1/3, 1/3])
+trainset, testset = loader.load_MNIST(config, loadtest=True, include_list=config.dataset_params["classes"], props=config.dataset_params["props"])
 
 # # Remap labels to 0, 1, ... for CrossEntropyLoss
 # label_map = {orig: new for new, orig in enumerate(config.include_list)}
@@ -66,6 +66,7 @@ tt = images[:, 0, :, :].reshape(-1, np.prod(config.IMG_SHAPE[1:]))
 cov = torch.cov(tt.T)
 Lambda = torch.lobpcg(cov)[0].item()
 print('Largest eigenvalue is {:.4f}'.format(Lambda))
+joblib.dump({'config': config, 'Lambda': Lambda}, path_history + 'config.jbl')
 
 # ====================================================================
 # Training loader

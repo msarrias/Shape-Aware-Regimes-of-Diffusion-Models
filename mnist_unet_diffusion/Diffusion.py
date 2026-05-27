@@ -28,6 +28,7 @@ class TrainingConfig:
     STANDARDIZE = False         # Whether the dataset should be standardized
     n_images = 500              # Number of images per class
     NUM_WORKERS = 2             # Number of workers
+    dataset_params = {}         # Additional dataset parameters
     
     mean = 0                    # Mean of the dataset (to be computed)
     std = 0                     # Std of the dataset (to be computed)

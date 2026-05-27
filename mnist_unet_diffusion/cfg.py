@@ -16,6 +16,9 @@ def load_config(DATASET):
         config.CENTER = True
         config.STANDARDIZE = False
         config.n_images = 15000 #10000
+        config.dataset_params = {"name": "mnist_unet_diffusion", 
+                                 "classes": [0, 1, 8],
+                                 "props": [1/3, 1/3, 1/3]}
     else:
         raise Exception('Dataset {:s} not implemented'.format(DATASET))
         
