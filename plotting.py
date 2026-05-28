@@ -575,7 +575,7 @@ def plot_sagd_heatmap_row_with_prob(
         nrows=1,
         ncols=num_plots,
         figsize=(6 * num_plots, 9.5),
-        gridspec_kw={'wspace': 0.05},
+        gridspec_kw={'wspace': 0.5},
     )
     if num_plots == 1:
         axes = [axes]
