@@ -102,6 +102,12 @@ def forward_diffusion(df, x0, timesteps, config):
     # Return the noisy image and the noise realisation
     return sample_a, eps
 
+
+@torch.no_grad()
+def get_time_scale(config):
+    return -0.5 * np.log(config.alpha_cumulative.cpu())
+
+
 @torch.no_grad()
 def sample_diffusion_from_noise(model, n_images=25, config=TrainingConfig(), df=DiffusionConfig(), dim=3, snap_steps=None):
     # Generate n_images starting points from N(0, 1)

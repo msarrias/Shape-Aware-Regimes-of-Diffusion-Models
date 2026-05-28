@@ -441,11 +441,6 @@ def run_pipeline(
 
 
 def run_mnist(exp_path: Path, args: argparse.Namespace, logger: logging.Logger) -> None:
-    dataset_params = joblib.load(exp_path / "config.jbl")
-    Lambda = dataset_params["Lambda"]
-    ts = np.log(Lambda) / 2.0
-    dataset_params["ts_theoretical"] = ts
-
     for subdir in (d for d in exp_path.iterdir() if d.is_dir()):
         logger.info(f"Running diffusion for MNIST: {subdir}")
         history = joblib.load(subdir / "history.jbl")

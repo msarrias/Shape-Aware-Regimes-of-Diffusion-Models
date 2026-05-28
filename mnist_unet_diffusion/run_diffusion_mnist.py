@@ -66,7 +66,7 @@ tt = images[:, 0, :, :].reshape(-1, np.prod(config.IMG_SHAPE[1:]))
 cov = torch.cov(tt.T)
 Lambda = torch.lobpcg(cov)[0].item()
 print('Largest eigenvalue is {:.4f}'.format(Lambda))
-joblib.dump({'config': config.dataset_params, 'Lambda': Lambda}, path_history + 'config.jbl', compress=3)
+
 
 # ====================================================================
 # Training loader
@@ -103,6 +103,14 @@ df = Diffusion.DiffusionConfig(
     device    = config.DEVICE,
 )
 loss_fn = nn.MSELoss()
+
+timescale = np.flip(np.asarray(Diffusion.get_time_scale(df)))
+ts = np.log(Lambda) / 2.0
+ts_step = np.argmin(np.abs(timescale - ts))
+joblib.dump({'dataset': config.dataset_params, 
+             'Lambda': Lambda,
+             'ts_theoretical': ts,
+             'ts_step': ts_step}, path_history + 'config.jbl', compress=3)
 
 save_every = 10000
 Diffusion.train(model, trainloader, optimizer, config, df,
