@@ -66,7 +66,7 @@ tt = images[:, 0, :, :].reshape(-1, np.prod(config.IMG_SHAPE[1:]))
 cov = torch.cov(tt.T)
 Lambda = torch.lobpcg(cov)[0].item()
 print('Largest eigenvalue is {:.4f}'.format(Lambda))
-joblib.dump({'config': config, 'Lambda': Lambda}, path_history + 'config.jbl')
+joblib.dump({'config': config.dataset_params, 'Lambda': Lambda}, path_history + 'config.jbl', compress=3)
 
 # ====================================================================
 # Training loader

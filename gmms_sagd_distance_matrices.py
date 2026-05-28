@@ -436,17 +436,21 @@ def run_pipeline(
         sasne_job(
             sasne_file_path=path / "SASNE.jbl",
             distance_matrix=distance_matrix,
-            dim=args.args.sasne_dimension
+            dim=args.sasne_dimension
         )
 
 
 def run_mnist(exp_path: Path, args: argparse.Namespace, logger: logging.Logger) -> None:
+    dataset_params = joblib.load(exp_path / "config.jbl")
+    Lambda = dataset_params["Lambda"]
+    ts = np.log(Lambda) / 2.0
+    dataset_params["ts_theoretical"] = ts
+
     for subdir in (d for d in exp_path.iterdir() if d.is_dir()):
         logger.info(f"Running diffusion for MNIST: {subdir}")
         history = joblib.load(subdir / "history.jbl")
         history = flatten_mnist_history(history)
-        run_pipeline(path=subdir, history=history, args=args, logger=logger)
-
+        run_pipeline(path=subdir, history=history, args=args, logger=logger)    
 
 def run_synthetic(exp_path: Path, args: argparse.Namespace, logger: logging.Logger) -> None:
     dt = args.T / args.n_steps

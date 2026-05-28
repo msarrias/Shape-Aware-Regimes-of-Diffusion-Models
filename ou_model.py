@@ -154,7 +154,7 @@ def classify_hierarchical(X, mu_star):
     return labels
 
 
-def theoretical_ts(mu_star, std, times):
+def theoretical_bimodal_gaussian_ts(mu_star, std, times):
     """
     computes the theoretical speciation time t_s and finds its index in the time array.
     :param mu_star: The cluster center vector.
