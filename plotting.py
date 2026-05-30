@@ -383,7 +383,7 @@ def _draw_sagd_heatmap_with_prob(
         time_vector,
         d,
         distance='SAGD',
-        model: str ='bimodal_gaussian',
+        model: str ='synthetic',
         mu=None,
         std=None,
         ts=None,
@@ -394,18 +394,21 @@ def _draw_sagd_heatmap_with_prob(
         show_prob=True,
         x_final:np.ndarray=None,
         colors:list=None,
-        ctds=None
+        ctds=None,
 ):
     def find_time_idx(time_snaps, t):
         time_snaps = np.asarray(time_snaps, dtype=float)
         return np.argmin(np.abs(time_snaps - t))
 
     from ou_model import same_cluster_prob
-
     n_samples = len(time_vector)
-    W_min, W_max = W.min(), W.max()
-    W_norm = (W - W_min) / (W_max - W_min) if W_max > W_min else W - W_min
+    p5, p95 = np.percentile(W, 5), np.percentile(W, 95)
+    W_norm = np.clip((W - p5) / (p95 - p5), 0, 1) if p95 > p5 else W - p5
+
+    # W_min, W_max = W.min(), W.max()
+    # W_norm = (W - W_min) / (W_max - W_min) if W_max > W_min else W - W_min
     sns.heatmap(W_norm, cmap='viridis', ax=ax_hm, cbar=False, square=True, vmin=0, vmax=1)
+
     heat_indices = np.linspace(0, n_samples - 1, 8, dtype=int)
     tick_labels = [f"{time_vector[idx]:.2f}" for idx in heat_indices]
     ax_hm.set_xticks(heat_indices + 0.5)
@@ -458,13 +461,16 @@ def _draw_sagd_heatmap_with_prob(
         ax_prob.set_ylim(0.48, 1.02)
         ax_prob.tick_params(axis='x', which='both', bottom=False, labelbottom=False)
         ax_prob.set_ylabel("φ(t)", fontsize=12)
-        if d:
+        if model == 'synthetic':
             ax_prob.set_title(f"{distance} Distance Matrix (d={d})", fontsize=14)
         else:
-            ax_prob.set_title(f"{distance} Distance Matrix (d={d})", fontsize=14)
+            ax_prob.set_title(f"{distance} Distance Matrix", fontsize=14)
         sns.despine(ax=ax_prob, top=True, right=True, bottom=True, left=False)
-    else:
+    elif model == 'synthetic':
         ax_hm.set_title(f"{distance} Distance Matrix (d={d})", fontsize=14)
+    else:
+        ax_hm.set_title(f"{distance} Distance Matrix", fontsize=14)
+
 
     if ctds is not None:
         time_array = np.asarray(time_vector)
@@ -502,7 +508,7 @@ def _draw_sagd_heatmap_with_prob(
     if x_final is not None:
         pad = 0.9 if ctds is not None else 0.8
         ax_sc = divider.append_axes("bottom", size="60%", pad=pad)
-        if d == 2 and model=='bimodal_gaussian':
+        if d == 2 and model=='synthetic':
             ax_sc.scatter(x_final[:, 0], x_final[:, 1], c=colors, s=3, alpha=0.6)
             ax_sc.set_xlabel('x', fontsize=10)
             ax_sc.set_ylabel('y', fontsize=10)
@@ -512,7 +518,7 @@ def _draw_sagd_heatmap_with_prob(
             ax_sc.scatter(X_2d[:, 0], X_2d[:, 1], c=colors, s=3, alpha=0.6)
             ax_sc.set_xlabel(f'TSNE 1', fontsize=10)
             ax_sc.set_ylabel(f'TSNE 2', fontsize=10)
-        if d:
+        if model=='synthetic':
             ax_sc.set_title(f't=0 (d={d})', fontsize=10)
         else:
             ax_sc.set_title(f't=0', fontsize=10)
@@ -560,7 +566,7 @@ def plot_sagd_heatmap_row_with_prob(
     mu,
     std,
     distance:str='SAGD',
-    model:str='bimodal_gaussian',
+    model:str='synthetic',
     ts_list: list=None,
     tsagd_list=None,
     tstar_list=None,
