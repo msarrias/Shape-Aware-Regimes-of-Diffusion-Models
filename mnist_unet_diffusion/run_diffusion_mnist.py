@@ -16,7 +16,7 @@ import joblib
 # ====================================================================
 # Config
 # ====================================================================
-DATASET = 'mnist_unet_diffusion'
+DATASET = 'MNIST'
 config = cfg.load_config(DATASET)
 # config.n_images = 2000
 config.DEVICE = 'cuda:0' if torch.cuda.is_available() else 'cpu'
@@ -81,7 +81,7 @@ trainloader = torch.utils.data.DataLoader(trainset,
 # Model
 # ====================================================================
 model = Unet.UNet(
-    input_channels          = 1,  # mnist_unet_diffusion is grayscale
+    input_channels          = 1,  # MNIST is grayscale
     output_channels         = 1,
     base_channels           = 64,
     base_channels_multiples = (1, 2, 4, 4),
