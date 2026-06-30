@@ -10,8 +10,6 @@ def SASNE(data, n_components=2):
     W = obj_knn.compute_W() #construct_graph(data)
     res = get_symbiharmonic_coords(W)
     Z, eigenval = res
-    print(Z)
-    print(Z.shape)
     init_Y = 1e-4 * Z[:,[x for x in range(n_components)]] * np.sqrt(eigenval[1])
     n = len(W)
     perplexity = 0.9 * n
