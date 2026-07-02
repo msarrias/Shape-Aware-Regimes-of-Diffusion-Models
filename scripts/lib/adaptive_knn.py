@@ -1,5 +1,4 @@
 from scipy.spatial.distance import pdist, squareform
-
 import numpy as np
 
 
