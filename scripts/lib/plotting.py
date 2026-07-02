@@ -286,6 +286,81 @@ def plot_speciation_3d(
     plt.show()
 
 
+def plot_full_sasne_dashboard(
+        sasne_results,
+        d_list,
+        time_snaps_vector,
+        save_path=None
+):
+    """
+    Plots a 3-row dashboard for each dimension:
+    Row 1: SASNE Embedding Trajectory
+    Row 2: Rank Resilience Plot (RRP)
+    Row 3: SAGD Distance Heatmap
+    """
+    num_cols = len(d_list)
+    # 3 Rows now: Projections, RRPs, and Heatmaps
+    fig, axes = plt.subplots(3, num_cols, figsize=(5 * num_cols, 15))
+
+    # Handle the single-column case
+    if num_cols == 1:
+        axes = axes.reshape(3, 1)
+
+    # Prepare labels for the heatmaps (Row 3)
+    n_samples = len(time_snaps_vector)
+    heat_indices = np.linspace(0, n_samples - 1, 8, dtype=int)
+    tick_labels = [f"{time_snaps_vector[i]:.2f}" for i in heat_indices]
+
+    for i, (result, d) in enumerate(zip(sasne_results, d_list)):
+        # result structure: (embedding, Z, D1, D2, W, ts_idx, ts_val)
+        # Note: adjust the unpacking if your 'result' tuple order is different
+        SAGD_dist_matrix, embedding, Z, D1, D2, time_snaps, ts_idx, t_s = result
+        cbar = True if i == len(sasne_results) - 1 else False
+
+        # --- ROW 1: SASNE Projection ---
+        ax_proj = axes[0, i]
+        ax_proj.set_title(f'Dimension d = {d}', fontsize=16, fontweight='bold')
+
+        colors = np.arange(len(embedding))
+        ax_proj.scatter(embedding[:, 0], embedding[:, 1], s=15, alpha=0.4,
+                        c=colors, cmap='viridis')
+
+        # Mark t=T, t=0, and ts
+        ax_proj.scatter(embedding[0, 0], embedding[0, 1], c='red', s=80, edgecolors='black', zorder=5)
+        ax_proj.scatter(embedding[-1, 0], embedding[-1, 1], c='blue', s=80, edgecolors='black', zorder=5)
+        ax_proj.scatter(embedding[ts_idx, 0], embedding[ts_idx, 1], c='green', s=80, edgecolors='black', zorder=6)
+
+        ax_proj.set_xlabel('SASNE1')
+        if i == 0: ax_proj.set_ylabel('SASNE2')
+
+        # --- ROW 2: Rank Resilience Plot (RRP) ---
+        ax_rank = axes[1, i]
+        plt.sca(ax_rank)  # Ensure RRP plots on the correct axis
+        RRP(D1, D2)
+
+        # --- ROW 3: SAGD Distance Heatmap ---
+        ax_heat = axes[2, i]
+        sns.heatmap(SAGD_dist_matrix, cmap='viridis', robust=True, ax=ax_heat, cbar=cbar, cbar_kws={'shrink': 0.8})
+
+        # Add the Speciation Lines
+        ax_heat.axvline(x=ts_idx + 0.5, color='red', linestyle='--', alpha=0.8, label=f'$t_s={round(t_s,2):.2f}$')
+        ax_heat.axhline(y=ts_idx + 0.5, color='red', linestyle='--', alpha=0.8)
+
+        # Heatmap Ticks
+        ax_heat.set_xticks(heat_indices + 0.5)
+        ax_heat.set_xticklabels(tick_labels, rotation=45)
+        ax_heat.set_yticks(heat_indices + 0.5)
+        ax_heat.set_yticklabels(tick_labels, rotation=0)
+        ax_heat.set_xlabel("Time")
+        ax_heat.legend(loc='upper left')
+        if i == 0:
+            ax_heat.set_ylabel("Time")
+    plt.tight_layout()
+    if save_path:
+        plt.savefig(save_path, dpi=300, bbox_inches='tight')
+    plt.show()
+
+
 def plot_sagd_heatmap_row(
         W_list,
         d_list,
@@ -477,7 +552,7 @@ def _draw_sagd_heatmap_with_prob(
         t_values = sorted(ctds['CTDs'].keys(), reverse=True)
         t_arr = np.array(t_values)
         means = [np.mean(np.array(ctds['CTDs'][t]['norm_ctds'])) for t in t_values]
-        variances = [np.var(np.array(ctds['CTDs'][t]['norm_ctds'])) for t in t_values]
+        std = [np.std(np.array(ctds['CTDs'][t]['norm_ctds'])) for t in t_values]
 
         # map each t value directly to its pixel position in the heatmap
         x_positions = np.array([
@@ -487,7 +562,7 @@ def _draw_sagd_heatmap_with_prob(
         ax_mom = divider.append_axes("bottom", size="30%", pad=0.8, sharex=ax_hm)
         ax_mom2 = ax_mom.twinx()
         ax_mom.plot(x_positions, means, color='steelblue', linewidth=1.5)
-        ax_mom2.plot(x_positions, variances, color='tomato', linewidth=1.5)
+        ax_mom2.plot(x_positions, std, color='tomato', linewidth=1.5)
 
         if ts is not None:
             ax_mom.axvline(x=ts_idx + 0.5, color='red', linestyle='--', alpha=0.8)
