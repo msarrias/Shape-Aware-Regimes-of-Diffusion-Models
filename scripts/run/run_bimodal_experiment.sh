@@ -28,7 +28,7 @@ for NORM in "${NORM_TYPES[@]}"; do
 
         echo "Running experiment: $EXP_NAME | norm: $NORM | clipping: $CLIP"
 
-        python gmms_sagd_distance_matrices.py \
+        python ../analysis/sagd_pipeline.py \
             --exp_name "$EXP_NAME" \
             --ds $DS_LIST \
             --threads $THREADS \
