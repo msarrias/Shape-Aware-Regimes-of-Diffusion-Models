@@ -1,4 +1,3 @@
-import matplotlib.pyplot as plt
 import torch
 from torch import nn
 import sys
@@ -13,9 +12,7 @@ import loader
 import cfg
 import joblib
 
-# ====================================================================
-# Config
-# ====================================================================
+
 DATASET = 'MNIST'
 config = cfg.load_config(DATASET)
 # config.n_images = 2000
@@ -33,7 +30,7 @@ os.makedirs(path_history, exist_ok=True)
 
 # Back up scripts
 for fname, dst in [
-    ('run_Diffusion_MNIST.py', path_models + '_run_Diffusion.py'),
+    ('run_diffusion_mnist.py', path_models + '_run_Diffusion.py'),
     ('loader.py',        path_models + '_loader.py'),
     ('cfg.py',           path_models + '_cfg.py'),
 ]:
@@ -45,7 +42,12 @@ for fname, dst in [
 # ====================================================================
 # Data
 # ====================================================================
-trainset, testset = loader.load_MNIST(config, loadtest=True, include_list=config.dataset_params["classes"], props=config.dataset_params["props"])
+trainset, testset = loader.load_MNIST(
+    config,
+    loadtest=True,
+    include_list=config.dataset_params["classes"],
+    props=config.dataset_params["props"]
+)
 
 # # Remap labels to 0, 1, ... for CrossEntropyLoss
 # label_map = {orig: new for new, orig in enumerate(config.include_list)}
