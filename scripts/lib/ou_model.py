@@ -63,14 +63,14 @@ def find_third_phase_onset(
         return (x - x.min()) / (x.max() - x.min())
 
     mu_hat = [CTDs_raw[t]['norm_ctds'].mean() for t in time_snaps]
-    var_hat = [CTDs_raw[t]['norm_ctds'].var() for t in time_snaps]
+    std_hat = [CTDs_raw[t]['norm_ctds'].std() for t in time_snaps]
 
     t_arr = np.array(time_snaps)
 
     mu_norm = minmax(np.array(mu_hat))
-    var_norm = minmax(np.array(var_hat))
+    std_norm = minmax(np.array(std_hat))
 
-    diff = var_norm - mu_norm
+    diff = std_norm - mu_norm
     crossings = np.where(np.diff(np.sign(diff)))[0]
 
     if len(crossings) == 0:
@@ -78,7 +78,7 @@ def find_third_phase_onset(
         return None
 
     idx = crossings[-1]
-    t_cross = t_arr[idx]
+    t_cross = t_arr[idx + 1]
 
     return t_cross
 
