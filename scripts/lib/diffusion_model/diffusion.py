@@ -2,7 +2,7 @@ import numpy as np
 import torch
 from tqdm import trange
 import matplotlib.pyplot as plt
-import Plot
+from lib.diffusion_model.plot import imshow
 import torchvision
 import torchaudio
 import joblib
@@ -245,7 +245,7 @@ def train(
                             config.path_save + 'History/' + suffix + 'History_{:d}.jbl'.format(n_steps),
                             compress=3
                         )
-                    fig = Plot.imshow(samples.cpu(), config.mean, config.std)
+                    fig = imshow(samples.cpu(), config.mean, config.std)
                     fig.savefig(
                         config.path_save + 'Images/' + suffix + 'Sample_{:d}.pdf'.format(n_steps),
                         bbox_inches='tight'

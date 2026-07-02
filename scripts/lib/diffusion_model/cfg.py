@@ -1,7 +1,7 @@
-import Diffusion
+from lib.diffusion_model.diffusion import TrainingConfig
 
 def load_config(DATASET):
-    config = Diffusion.TrainingConfig()
+    config = TrainingConfig()
     config.DATASET = DATASET
     
     config.DEVICE = 'cuda:0'
