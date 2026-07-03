@@ -1,7 +1,7 @@
 import logging
 import numpy as np
 from scipy.stats import wasserstein_distance
-from spectral import normalized_Laplacian, unnormalized_Laplacian
+from spectral import normalized_laplacian, unnormalized_laplacian
 import scipy.linalg as la
 
 
@@ -20,7 +20,7 @@ def normalize_eigenvectors(
     
     return (Phi - col_min) / col_range
 
-def _solve_and_sort_std_eigv_problem(
+def solve_and_sort_std_eigv_problem(
         matrix: np.ndarray,
 ):
     # eigvc[:, i] is the i-th eigenvector
@@ -37,7 +37,7 @@ def _solve_and_sort_std_eigv_problem(
 
     return eigv, eigvc
 
-def _eigen_decompose_job(
+def eigen_decompose_job(
         W: np.ndarray,
         laplacian_type: str,
         norm:bool =True
@@ -46,15 +46,15 @@ def _eigen_decompose_job(
         raise ValueError("Unsupported laplacian_type")
 
     if laplacian_type == "normalized":
-        L = normalized_Laplacian(W=W)
+        L = normalized_laplacian(W=W)
 
     elif laplacian_type == "unnormalized":
-        L = unnormalized_Laplacian(W=W)
+        L = unnormalized_laplacian(W=W)
     else:
         raise ValueError("Unsupported laplacian_type")
 
     # Solve Eigen-problem
-    eigvs, eigvecs = _solve_and_sort_std_eigv_problem(matrix=L)
+    eigvs, eigvecs = solve_and_sort_std_eigv_problem(matrix=L)
 
     if np.sum(eigvs < 1e-10) > 1:
         raise ValueError(
