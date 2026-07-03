@@ -10,7 +10,7 @@ STEPS=1000
 SEED=123
 DS_LIST="3"
 
-KERNEL="gaussian"
+KERNEL="hierarchical_gaussian"
 LAPLACIAN="unnormalized"
 NORM="log_scale_and_shift"
 MODEL="bimodal"
@@ -24,7 +24,7 @@ python ../analysis/sagd_pipeline.py \
     --n_steps $STEPS \
     --seed $SEED \
     --kernel "$KERNEL" \
-    --data-model "$MODEL" \
+    --data_model "$MODEL" \
     --laplacian "$LAPLACIAN" \
     --norm_type "$NORM" \
     --inject_edges
