@@ -14,8 +14,8 @@ from logger import setup_logging, parse_args
 from lib.adaptive_knn import AdaptiveKNNGraph
 from lib.clustering import cluster_distance_matrix
 from lib.ou_model import backward, theoretical_bimodal_gaussian_ts, centers
-from lib.sgd import compute_sgd, _eigen_decompose_job
-from lib.spectral import normalize
+from lib.sgd import compute_sgd, eigen_decompose_job
+from lib.stats import normalize
 from lib.distances import ctd_matrix
 
 
