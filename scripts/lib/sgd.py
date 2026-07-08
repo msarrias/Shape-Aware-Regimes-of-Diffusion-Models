@@ -1,7 +1,7 @@
 import logging
 import numpy as np
 from scipy.stats import wasserstein_distance
-from spectral import normalized_laplacian, unnormalized_laplacian
+from lib.spectral import normalized_laplacian, unnormalized_laplacian
 import scipy.linalg as la
 
 
