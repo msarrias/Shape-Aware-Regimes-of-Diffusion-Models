@@ -9,6 +9,104 @@ from mpl_toolkits.axes_grid1 import make_axes_locatable
 from matplotlib import pyplot as plt
 from matplotlib.cm import ScalarMappable
 from matplotlib.colors import Normalize
+from lib.ou_model import same_cluster_prob, pos_cluster_prob, find_third_phase_onset
+from pathlib import Path
+import joblib
+from sklearn.manifold import TSNE
+
+
+def plot_sagd_heatmap_row_mnist(exp_path, steps):
+    subdirs = [exp_path / Path(exp_path.name + "_" + str(step)) for step in steps]
+
+    W_list = []
+    time_snaps_vector_list = []
+    sagd_dms = []
+    ts_list, tsagd_list, t_star_list = [], [], []
+    std = 1.0
+    mu = None
+    ctds_list = []
+    params = joblib.load(exp_path / "config.jbl")
+
+    for subdir in subdirs:
+        history = joblib.load(subdir / "history.jbl")
+        snaps = np.asarray(list(history.keys()))
+        time_snaps_vector_list.append(snaps)
+        breakpoints = joblib.load(subdir / "clusters.jbl")
+        W_list.append(joblib.load(subdir / "Ws.jbl"))
+        ctds = joblib.load(subdir / "CTDs.jbl")
+        ctds_list.append(ctds)
+        sagd_dms.append(joblib.load(subdir / "SAGD.jbl"))
+        ts_list.append(params['ts_step'])
+        tsagd_list.append(snaps[breakpoints[0]])
+        t_star_list.append(find_third_phase_onset(ctds['CTDs'], snaps))
+
+    plot_sagd_heatmap_row_with_prob(
+        W_list=sagd_dms,
+        d_list=steps,
+        time_snaps_vector_list=time_snaps_vector_list,
+        mu=mu,
+        std=std,
+        ts_list=ts_list,
+        tsagd_list=tsagd_list,
+        tstar_list=t_star_list,
+        ctds_list=ctds_list,
+        distance='SAGD',
+        model='mnist',
+        save_fig_path=exp_path.name + '_sagd_hetmap_row_with_prob.png',
+        show_prob=False
+    )
+
+
+def plot_ctd_stratified(CTDs_raw, W, node_labels, time_snaps, 
+                         t_values_to_plot=[0.0, 1.0, 3.0, 10.0]):
+    """
+    Plot CTD distribution stratified by within/between cluster pairs
+    at selected time steps.
+    """
+    fig, axes = plt.subplots(1, len(t_values_to_plot), 
+                          figsize=(5*len(t_values_to_plot), 4))
+
+    # fix: always make axes iterable
+    if len(t_values_to_plot) == 1:
+        axes = [axes]
+
+    for ax, t in zip(axes, t_values_to_plot):
+        t_key = min(CTDs_raw['CTDs'].keys(), key=lambda x: abs(x-t))
+        norm_ctds = np.array(CTDs_raw['CTDs'][t_key]['norm_ctds'])
+
+        # get all pairs
+        N = len(node_labels)
+        pairs_within  = []
+        pairs_between = []
+
+        idx = 0
+        for i in range(N):
+            for j in range(i+1, N):
+                if node_labels[i] == node_labels[j]:
+                    pairs_within.append(norm_ctds[idx])
+                else:
+                    pairs_between.append(norm_ctds[idx])
+                idx += 1
+
+        pairs_within  = np.array(pairs_within)
+        pairs_between = np.array(pairs_between)
+
+        ax.hist(pairs_within,  bins=50, alpha=0.6, color='steelblue',
+                density=True, label=f'Within')
+        ax.hist(pairs_between, bins=50, alpha=0.6, color='tomato',
+                density=True, label=f'Between')
+        ax.set_title(f't={t_key:.2f}', fontsize=11, fontweight='bold')
+        ax.set_xlabel('Normalized CTD')
+        ax.set_ylabel('Density')
+        ax.legend(fontsize=8, frameon=False)
+        sns.despine(ax=ax)
+
+    plt.suptitle('CTD distribution stratified by pair type',
+                 fontsize=13, fontweight='bold')
+    plt.tight_layout()
+    plt.savefig('figs/ctd_stratified.png', dpi=150, bbox_inches='tight')
+    plt.show()
+
 
 def plot_data_distribution(
         step_idx,
@@ -475,7 +573,6 @@ def _draw_sagd_heatmap_with_prob(
         time_snaps = np.asarray(time_snaps, dtype=float)
         return np.argmin(np.abs(time_snaps - t))
 
-    from ou_model import same_cluster_prob
     n_samples = len(time_vector)
     p5, p95 = np.percentile(W, 5), np.percentile(W, 95)
     W_norm = np.clip((W - p5) / (p95 - p5), 0, 1) if p95 > p5 else W - p5
@@ -699,8 +796,6 @@ def plot_breakpoint_and_speciation(
     Plot ``1 - φ(t_s)`` and ``1 - φ(t_SAGD)`` across dimensions on a
     log-scale y-axis.
     """
-    from ou_model import same_cluster_prob
-
     phi_ts = np.zeros(len(d_list))
     phi_tsagd = np.zeros(len(d_list))
     for i, (d, ts_tuple, tsagd_tuple) in enumerate(
@@ -770,8 +865,6 @@ def plot_state_and_ctd_frame(
 
     Pass existing ``fig`` and ``axes`` (length-2) to reuse them across frames.
     """
-    from ou_model import pos_cluster_prob
-
     data = np.asarray(history_list[step_idx])
     n, d = data.shape
     t = float(time_snaps[step_idx])
@@ -834,3 +927,44 @@ def plot_state_and_ctd_frame(
     if show and created_fig:
         plt.show()
     return fig, (ax_left, ax_right)
+
+
+def plot_tsne(X, node_labels, perplexity=30, random_state=42,
+              title="t-SNE of data with cluster labels", ax=None, save=True,
+              class_names=None):
+    """
+    Plot t-SNE of the data colored by cluster labels.
+    
+    X:           (N, D) array of data points
+    node_labels: (N,) array of integer cluster assignments
+    class_names: optional dict mapping label value -> display name,
+                 e.g. {1: 'Digit 1', 2: 'Digit 8'}
+    """
+    print("Running t-SNE...")
+    X_2d = TSNE(n_components=2, perplexity=perplexity, random_state=random_state).fit_transform(X)
+    
+    standalone = ax is None
+    if standalone:
+        fig, ax = plt.subplots(figsize=(7, 6))
+    
+    unique_labels = np.unique(node_labels)
+    palette = sns.color_palette("tab10", len(unique_labels))
+    
+    for label, color in zip(unique_labels, palette):
+        mask = node_labels == label
+        label_str = class_names[label] if class_names is not None else f'Cluster {label}'
+        ax.scatter(X_2d[mask, 0], X_2d[mask, 1], color=color, label=label_str, alpha=0.6, s=10, linewidths=0)
+    
+    ax.legend(markerscale=2, frameon=False, fontsize=14)
+    ax.set_title(title, fontweight='bold', fontsize=14)
+    ax.set_xlabel('t-SNE 1')
+    ax.set_ylabel('t-SNE 2')
+    sns.despine(ax=ax)
+    
+    if standalone:
+        plt.tight_layout()
+        if save:
+            plt.savefig('tsne_labels.png', dpi=150, bbox_inches='tight')
+        plt.show()
+    
+    return X_2d
