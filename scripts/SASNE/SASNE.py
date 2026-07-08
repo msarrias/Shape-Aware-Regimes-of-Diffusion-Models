@@ -2,7 +2,7 @@ import numpy as np
 from sklearn.manifold import TSNE
 from graph_distance import get_symbiharmonic_coords
 import time
-from adaptive_knn import AdaptiveKNNGraph
+from lib.adaptive_knn import AdaptiveKNNGraph
 
 
 def SASNE(data, n_components=2):
