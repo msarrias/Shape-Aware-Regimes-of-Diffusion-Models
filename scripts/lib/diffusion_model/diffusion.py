@@ -15,7 +15,7 @@ class TrainingConfig:
     TrainingConfig: Class containing all information on the data, device, LR,
     Number of SGD steps, paths for saving, etc.
     '''
-    DATASET = ''                # Dataset name (MNIST, CIFAR, Imagenet, CelebA)
+    DATASET = ''                # Dataset name (mnist, CIFAR, Imagenet, CelebA)
     IMG_SHAPE = (3, 32, 32)     # Fixed input image size
     BATCH_SIZE = 128            # Batch size
     DEVICE = 'cuda:0'           # Name of the device to be used
