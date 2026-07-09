@@ -1,12 +1,14 @@
 import joblib
-from joblib import Parallel, delayed
 import numpy as np
 import sys
 import torch
 from pathlib import Path
 from tqdm import tqdm
+
 from lib.ou_model import backward
-from utils import (theoretical_bimodal_gaussian_ts, centers, knn_job, ctd_job)
+from lib.stats import normalize
+from scipy.stats import wasserstein_distance
+from utils import (theoretical_bimodal_gaussian_ts, centers, knn_job, ctd_job, fetch_pairs)
 
 def main(
         ds,
@@ -21,7 +23,11 @@ def main(
         dt,
         snap_time_indices,
         threads,
-        laplacian
+        laplacian,
+        clip_perc,
+        log_transform,
+        clipping,
+        norm,
 ):
     for d in ds:
         print(f"Running diffusion for D={d}")
@@ -65,8 +71,8 @@ def main(
         ws_file = path / "Ws.jbl"
         time_snaps = list(history.keys())
         if not ws_file.exists():
-            knn_results = Parallel(n_jobs=threads, backend="threading")(
-                delayed(knn_job)(history[t], edges_to_inject, kernel)
+            knn_results = joblib.Parallel(n_jobs=threads, backend="threading")(
+                joblib.delayed(knn_job)(history[t], edges_to_inject, kernel)
                 for t in tqdm(time_snaps, desc="KNN Progress")
             )
             w_results = [w for *_, w in knn_results]
@@ -87,8 +93,8 @@ def main(
         # 2. CTD matrix
         ctd_file = path / "CTDs.jbl"
         if not ctd_file.exists():
-            ctds = Parallel(n_jobs=threads)(
-                delayed(ctd_job)(W_i, laplacian)
+            ctds = joblib.Parallel(n_jobs=threads)(
+                joblib.delayed(ctd_job)(W_i, laplacian)
                 for W_i in tqdm(w_results, total=len(w_results), desc="CTD Logic")
             )
             ctds_dict = {t: triu_i for t, triu_i in zip(time_snaps, ctds)}
@@ -103,19 +109,55 @@ def main(
                 ctd_file,
                 compress=3,
             )
+        else:
+            ctds_dict = joblib.load(ctd_file)["CTDs"]
+        for log_transform in [True, False]:
+            for clipping in [True, False]:
+                for norm in ['scale_and_shift', 'norm_wrt_volume', 'norm_wrt_avg_ctd']:
+                    is_clipped = 'clipped' if clipping else ''
+                    is_transformed = 'log_transformed' if log_transform else ''
+                    sagd_file = path / f"SAGD_{norm}_{is_clipped}_{is_transformed}.jbl"
+                    if not sagd_file.exists():
+                        pairs = fetch_pairs(num_graphs=len(time_snaps))
+                        ctds_list = [np.asarray(value) for value in ctds_dict.values()]
+                        if log_transform:
+                            ctds_list = [np.log1p(value) for value in ctds_list]
+                        if clipping:
+                            ctds_list = [
+                                np.clip(
+                                    value, np.percentile(value, 100 - clip_perc), np.percentile(value, clip_perc)
+                                )
+                                for value in ctds_list
+                            ]
+                        norm_ctds = [
+                            normalize(list_values=value, norm_type=norm, global_list_values=None)
+                            for value in ctds_list
+                        ]
+                        num_graphs = len(norm_ctds)
+                        distances = joblib.Parallel(n_jobs=threads)(
+                            joblib.delayed(wasserstein_distance)(norm_ctds[i], norm_ctds[j])
+                            for i, j in tqdm(pairs, desc="SAGD Matrix")
+                        )
+                        sagd_dist_matrix = np.zeros((num_graphs, num_graphs))
+                        for (i, j), dist in zip(pairs, distances):
+                            sagd_dist_matrix[i, j] = sagd_dist_matrix[j, i] = dist
+                        joblib.dump(sagd_dist_matrix, sagd_file, compress=3)
 
 if __name__ == "__main__":
     sys.setrecursionlimit(10000)
+    normalization = ["shift_center", "mean", "volume"]
     exp_path = Path("/extra/shared/groups/marinaivan/data_marina/recurrence_matrices/test_data")
     ds = [2, 50, 256, 1024, 16384]
     mu = 4
-    n_samples_list = [1000, 3000, 6000, 10000]
+    n_samples_list = [1000]#, 3000, 6000, 10000]
     n_steps = 1000
     T = 10.0
     threads = 20
     laplacian = "unnormalized"
     kernel = "gaussian"
     data_model = 'bimodal_gaussian'
+    norm = ['scale_and_shift', 'norm_wrt_volume', 'norm_wrt_avg_ctd']
+    clip_perc = 95
     dt = T / n_steps
     times = list(np.arange(T, 0, -dt))
     ts_indices = []
@@ -143,4 +185,9 @@ if __name__ == "__main__":
             snap_time_indices=snap_time_indices,
             threads=threads,
             laplacian=laplacian,
+            clip_perc=95,
+            log_transform=[True, False],
+            clipping=[True, False],
+            norm=norm
             )
+
