@@ -805,7 +805,7 @@ def plot_breakpoint_and_speciation(
         phi_ts[i] = same_cluster_prob(d, mu, std, np.array([ts]))[0]
         phi_tsagd[i] = same_cluster_prob(d, mu, std, np.array([tsagd]))[0]
 
-    fig, ax = plt.subplots(figsize=(8, 6))
+    fig, ax = plt.subplots(figsize=(6, 4))
     ax.plot(d_list, 1 - phi_ts, marker='o', color='red', label=r'$1 - φ(t_s)$')
     ax.plot(d_list, 1 - phi_tsagd, marker='s', color='orange', label=r'$1 - φ(t_{SAGD})$')
     ax.set_yscale('log')
