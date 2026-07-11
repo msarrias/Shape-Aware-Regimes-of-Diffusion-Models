@@ -7,7 +7,7 @@ def scale_and_shift(
         arr: np.ndarray,
 ):
     v_min, v_max = arr.min(), arr.max()
-    return (arr - v_min) / (v_max - v_min) if v_max != v_min else arr
+    return (arr - v_min) / (v_max - v_min)
 
 
 def normalize(
