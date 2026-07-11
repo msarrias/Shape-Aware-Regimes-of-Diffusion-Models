@@ -11,7 +11,7 @@ from scipy.stats import wasserstein_distance
 from utils import (theoretical_bimodal_gaussian_ts, centers, knn_job, ctd_job, fetch_pairs)
 
 def main(
-        ds,
+        dims,
         mu,
         times,
         n_samples,
@@ -27,9 +27,9 @@ def main(
         clip_perc,
         log_transform,
         clipping,
-        norm,
+        norm_type,
 ):
-    for d in ds:
+    for d in dims:
         print(f"Running diffusion for D={d}")
         mu_star = torch.ones(d) * mu
         std = 1.0
@@ -111,18 +111,18 @@ def main(
             )
         else:
             ctds_dict = joblib.load(ctd_file)["CTDs"]
-        for log_transform in [True, False]:
-            for clipping in [True, False]:
-                for norm in ['scale_and_shift', 'norm_wrt_volume', 'norm_wrt_avg_ctd']:
-                    is_clipped = 'clipped' if clipping else ''
-                    is_transformed = 'log_transformed' if log_transform else ''
+        for transform in log_transform:
+            for clip in clipping:
+                for norm in norm_type:
+                    is_clipped = 'clipped' if clip else ''
+                    is_transformed = 'log_transformed' if transform else ''
                     sagd_file = path / f"SAGD_{norm}_{is_clipped}_{is_transformed}.jbl"
                     if not sagd_file.exists():
                         pairs = fetch_pairs(num_graphs=len(time_snaps))
                         ctds_list = [np.asarray(value) for value in ctds_dict.values()]
-                        if log_transform:
+                        if transform:
                             ctds_list = [np.log1p(value) for value in ctds_list]
-                        if clipping:
+                        if clip:
                             ctds_list = [
                                 np.clip(
                                     value, np.percentile(value, 100 - clip_perc), np.percentile(value, clip_perc)
@@ -172,7 +172,7 @@ if __name__ == "__main__":
         dense = list(range(0, max_ts_idx, 3))
         snap_time_indices = sorted(set(coarse + dense + ts_indices + [len(times) - 1]), reverse=True)
         main(
-            ds=ds,
+            dims=ds,
             mu=mu,
             times=times,
             n_samples=n_samples,
@@ -188,6 +188,6 @@ if __name__ == "__main__":
             clip_perc=95,
             log_transform=[True, False],
             clipping=[True, False],
-            norm=norm
+            norm_type=norm
             )
 
