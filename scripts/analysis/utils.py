@@ -247,14 +247,14 @@ def fetch_weights(args: argparse.Namespace) -> np.ndarray | None:
     return None
 
 
-def get_snap_times(args: argparse.Namespace, times: list, ds: list) -> list:
-    if args.data_model == "bimodal_gaussian":
+def get_snap_times(data_model:str, mu:float, times: list, ds: list) -> list:
+    if data_model == "bimodal_gaussian":
         assert all(times[i] > times[i + 1] for i in range(len(times) - 1)), (
             "`times` must be strictly descending (t=T -> t=0). "
         )
         ts_indices = []
         for d in ds:
-            mu_star = torch.ones(d) * args.mu
+            mu_star = torch.ones(d) * mu
             _, ts_idx = theoretical_bimodal_gaussian_ts(mu_star, 1.0, times)
             ts_indices.append(ts_idx)
         min_ts_idx = min(ts_indices)

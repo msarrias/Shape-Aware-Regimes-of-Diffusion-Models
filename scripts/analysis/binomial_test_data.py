@@ -159,19 +159,9 @@ if __name__ == "__main__":
     norm = ['scale_and_shift', 'norm_wrt_volume', 'norm_wrt_avg_ctd']
     clip_perc = 95
     dt = T / n_steps
-    times = list(np.arange(T, 0, -dt))
-
+    times = np.linspace(T, dt, n_steps).tolist()
+    snap_time_indices = get_snap_times(data_model=data_model, mu=mu, times=times, ds=ds)
     for n_samples in n_samples_list:
-        ts_indices = []
-        print('Number of samples: {}'.format(n_samples))
-        for d in ds:
-            mu_star = torch.ones(d) * mu
-            _, ts_idx = theoretical_bimodal_gaussian_ts(mu_star, 1.0, times)
-            ts_indices.append(ts_idx)
-        max_ts_idx = max(ts_indices)
-        coarse = list(range(max_ts_idx, len(times), 10))
-        dense = list(range(0, max_ts_idx, 3))
-        snap_time_indices = sorted(set(coarse + dense + ts_indices + [len(times) - 1]), reverse=True)
         main(
             dims=ds,
             mu=mu,
