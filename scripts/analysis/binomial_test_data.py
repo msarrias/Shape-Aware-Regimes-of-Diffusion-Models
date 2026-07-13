@@ -36,7 +36,7 @@ def main(
         t_s, ts_idx = theoretical_bimodal_gaussian_ts(mu_star, std, times)
         path = exp_path / f"D{d}_N{n_samples}_T{int(T)}"
         path.mkdir(parents=True, exist_ok=True)
-        history_file = path / "history.pkl"
+        history_file = path / "history.jbl"
         if not history_file.exists():
             history = {}
             x_current = torch.randn(d, n_samples)
@@ -160,8 +160,9 @@ if __name__ == "__main__":
     clip_perc = 95
     dt = T / n_steps
     times = list(np.arange(T, 0, -dt))
-    ts_indices = []
+
     for n_samples in n_samples_list:
+        ts_indices = []
         print('Number of samples: {}'.format(n_samples))
         for d in ds:
             mu_star = torch.ones(d) * mu
