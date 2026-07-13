@@ -11,40 +11,27 @@ DS_LIST="2 50 256 1024 16384"
 
 KERNEL="gaussian"
 LAPLACIAN="unnormalized"
-MODEL="bimodal"
+MODEL="bimodal_gaussian"
 DISTANCE="SAGD"
-NORM_TYPES=("log_global_scale_and_shift" "scale_and_shift" "norm_wrt_avg_ctd" "norm_wrt_volume")
+SAVE_PATH="/extra/shared/groups/marinaivan/data_marina/recurrence_matrices/"
+EXP_NAME="scale_and_shift_log_scale_bimodal_experiment"
+NORM="scale_and_shift"
 
-for NORM in "${NORM_TYPES[@]}"; do
-    for CLIP in true false; do
-
-        if [ "$CLIP" = "true" ]; then
-            EXP_NAME="${NORM}_clipped"
-            CLIPPING_FLAG="--clipping"
-        else
-            EXP_NAME="${NORM}"
-            CLIPPING_FLAG=""
-        fi
-
-        echo "Running experiment: $EXP_NAME | norm: $NORM | clipping: $CLIP"
-
-        python ../analysis/sagd_pipeline.py \
-            --exp_name "$EXP_NAME" \
-            --ds $DS_LIST \
-            --threads $THREADS \
-            --mu $MU \
-            --T $T \
-            --n_samples $SAMPLES \
-            --n_steps $STEPS \
-            --seed $SEED \
-            --kernel "$KERNEL" \
-            --laplacian "$LAPLACIAN" \
-            --norm_type "$NORM" \
-            --data_model "$MODEL" \
-            --inject_edges \
-            --generate_sasne_embedding \
-            --distance "$DISTANCE" \
-            $CLIPPING_FLAG
-
-    done
-done
+python ../analysis/sagd_pipeline.py \
+    --exp_name "$EXP_NAME" \
+    --save_path "$SAVE_PATH" \
+    --ds $DS_LIST \
+    --threads $THREADS \
+    --mu $MU \
+    --T $T \
+    --n_samples $SAMPLES \
+    --n_steps $STEPS \
+    --seed $SEED \
+    --kernel "$KERNEL" \
+    --laplacian "$LAPLACIAN" \
+    --norm_type "$NORM" \
+    --data_model "$MODEL" \
+    --inject_edges \
+    --generate_sasne_embedding \
+    --distance "$DISTANCE" \
+    --clipping
