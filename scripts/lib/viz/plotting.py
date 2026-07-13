@@ -53,7 +53,8 @@ def plot_sagd_heatmap_row_mnist(exp_path, steps):
         distance='SAGD',
         model='mnist',
         save_fig_path=exp_path.name + '_sagd_hetmap_row_with_prob.png',
-        show_prob=False
+        show_prob=False,
+        show_legend=True,
     )
 
 
@@ -709,6 +710,7 @@ def plot_sagd_heatmap_with_prob(
     tsagd=None,
     save_fig_path=None,
     ctds=None,
+    show_legend=True,
 ):
     fig, ax_hm = plt.subplots(figsize=(8, 9))
     _draw_sagd_heatmap_with_prob(
@@ -721,7 +723,7 @@ def plot_sagd_heatmap_with_prob(
         std=std,
         tsagd=tsagd,
         show_ylabel=True,
-        show_legend=True,
+        show_legend=show_legend,
         show_prob=show_prob,
          distance=distance,
         ctds=ctds,
@@ -747,6 +749,7 @@ def plot_sagd_heatmap_row_with_prob(
     show_prob=False,
     x_final_list=None,
     colors_list=None,
+    show_legend=True,
 ):
     num_plots = len(W_list)
     fig, axes = plt.subplots(
@@ -770,7 +773,7 @@ def plot_sagd_heatmap_row_with_prob(
             tsagd=tsagd_list[i] if tsagd_list is not None else None,
             t_star=tstar_list[i] if tstar_list is not None else None,
             show_ylabel=(i == 0),
-            show_legend=True,
+            show_legend=show_legend,
             show_prob=show_prob,
             distance=distance,
             ctds=ctds_list[i] if ctds_list is not None else None,
@@ -968,3 +971,52 @@ def plot_tsne(X, node_labels, perplexity=30, random_state=42,
         plt.show()
     
     return X_2d
+
+
+def plot_normalization_comparison(norm_ctds_dict, ds, norm_type, log_transform, clipping, figsize_per_cell=(2.6, 2.2)):
+    n_rows = len(log_transform) * len(clipping)
+    n_cols = len(ds)
+    fig, axes = plt.subplots(
+        n_rows, n_cols,
+        figsize=(figsize_per_cell[0] * n_cols, figsize_per_cell[1] * n_rows),
+        sharex=True, sharey=True
+    )
+    axes = np.atleast_2d(axes)
+
+    colors = {'scale_and_shift': '#1D9E75', 'norm_wrt_avg_ctd': '#378ADD'}
+
+    row_idx = 0
+    for transform in log_transform:
+        for clip in clipping:
+            is_clipped = 'clipped' if clip else ''
+            is_transformed = 'log_transformed' if transform else ''
+            for col_idx, d in enumerate(ds):
+                ax = axes[row_idx, col_idx]
+                for norm in norm_type:
+                    key = f'{norm}_{is_clipped}_{is_transformed}'
+                    if key not in norm_ctds_dict[d]:
+                        continue
+                    snapshot_values = norm_ctds_dict[d][key]
+                    summary = np.array([np.std(v) for v in snapshot_values])
+                    summary_rescaled = (summary - summary.min())  / summary.max()
+                    ax.plot(range(len(summary_rescaled)), summary_rescaled, label=norm,
+                            color=colors[norm], lw=1.3, alpha=0.9)
+
+                if row_idx == 0:
+                    ax.set_title(f'$D={d}$', fontsize=10)
+                if col_idx == 0:
+                    row_label = f"{'log' if transform else 'raw'}, {'clip' if clip else 'no clip'}"
+                    ax.set_ylabel(row_label, fontsize=8)
+
+                ax.spines['top'].set_visible(False)
+                ax.spines['right'].set_visible(False)
+                ax.tick_params(labelsize=7)
+            row_idx += 1
+
+    handles = [plt.Line2D([0], [0], color=colors[n], lw=2, label=n) for n in norm_type]
+    fig.legend(handles=handles, loc='upper center', ncol=2, bbox_to_anchor=(0.5, 1.02),
+               fontsize=8, frameon=False)
+    fig.supxlabel('snapshot t', fontsize=9)
+    fig.supylabel(f'normalized CTD std', fontsize=9)
+    fig.tight_layout()
+    return fig
