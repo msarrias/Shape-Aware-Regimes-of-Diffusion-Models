@@ -2,6 +2,9 @@ import joblib
 import numpy as np
 import sys
 import torch
+import argparse
+import logging
+from pathlib import Path
 from logger import setup_logging, parse_args
 from utils import (
     fetch_pairs,
@@ -125,7 +128,7 @@ def main() -> None:
     sys.setrecursionlimit(2000)
     torch.manual_seed(args.seed)
 
-    exp_path = Path(args.save_path) if args.save_path else Path(f"data/{args.exp_name}")
+    exp_path = Path(args.save_path) / args.exp_name if args.save_path else Path(f"data/{args.exp_name}")
     exp_path.mkdir(parents=True, exist_ok=True)
 
     logger = setup_logging(exp_path, args)
