@@ -2,8 +2,10 @@ from joblib import Parallel, delayed
 from pathlib import Path
 import argparse
 import logging
+import joblib
 
 import numpy as np
+import torch
 from scipy.spatial.distance import pdist, squareform
 from scipy.stats import wasserstein_distance
 
@@ -126,6 +128,7 @@ def ctds_job(
             all_log_ctds = np.concatenate([np.log1p(triu_i) for triu_i in ctds])
         ctds_dict = {
             t: {
+                "ctds":triu_i,
                 "norm_ctds": normalize(
                     list_values=triu_i,
                     norm_type=args.norm_type,
