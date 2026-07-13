@@ -8,7 +8,7 @@ from tqdm import tqdm
 from lib.ou_model import backward
 from lib.stats import normalize
 from scipy.stats import wasserstein_distance
-from utils import (theoretical_bimodal_gaussian_ts, centers, knn_job, ctd_job, fetch_pairs)
+from utils import (theoretical_bimodal_gaussian_ts, centers, knn_job, ctd_job, fetch_pairs, get_snap_times)
 
 def main(
         dims,
@@ -55,7 +55,7 @@ def main(
                 if step in snap_time_indices:
                     history[t] = x_current.T.clone().numpy()
             data_to_dump = {
-                "history": history,
+                # "history": history,
                 "params": {
                     "dim": d,
                     "times_snapshots": list(history.keys()),
@@ -156,7 +156,7 @@ if __name__ == "__main__":
     laplacian = "unnormalized"
     kernel = "gaussian"
     data_model = 'bimodal_gaussian'
-    norm = ['scale_and_shift', 'norm_wrt_volume', 'norm_wrt_avg_ctd']
+    norm = ['scale_and_shift', 'norm_wrt_avg_ctd']
     clip_perc = 95
     dt = T / n_steps
     times = np.linspace(T, dt, n_steps).tolist()
