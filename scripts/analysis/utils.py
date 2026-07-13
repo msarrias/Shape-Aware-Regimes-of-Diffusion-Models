@@ -249,15 +249,18 @@ def fetch_weights(args: argparse.Namespace) -> np.ndarray | None:
 
 def get_snap_times(args: argparse.Namespace, times: list, ds: list) -> list:
     if args.data_model == "bimodal_gaussian":
+        assert all(times[i] > times[i + 1] for i in range(len(times) - 1)), (
+            "`times` must be strictly descending (t=T -> t=0). "
+        )
         ts_indices = []
         for d in ds:
             mu_star = torch.ones(d) * args.mu
             _, ts_idx = theoretical_bimodal_gaussian_ts(mu_star, 1.0, times)
             ts_indices.append(ts_idx)
-        max_ts_idx = max(ts_indices)
-        coarse = list(range(max_ts_idx, len(times), 10))
-        dense = list(range(0, max_ts_idx, 3))
-        return sorted(set(coarse + dense + ts_indices + [len(times) - 1]), reverse=True)
+        min_ts_idx = min(ts_indices)
+        coarse = list(range(0, min_ts_idx, 10))
+        dense = list(range(min_ts_idx, len(times), 3))
+        return [int(i) for i in sorted(set(coarse + dense + ts_indices + [len(times) - 1]), reverse=True)]
     else:
         return sorted(
             set(list(range(0, len(times), 10)) + [len(times) - 1]),
