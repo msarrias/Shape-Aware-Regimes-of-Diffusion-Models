@@ -86,7 +86,7 @@ def run_mnist(exp_path: Path, args: argparse.Namespace, logger: logging.Logger) 
 
 def run_synthetic(exp_path: Path, args: argparse.Namespace, logger: logging.Logger) -> None:
     dt = args.T / args.n_steps
-    times = list(np.arange(args.T, 0, -dt))
+    times = np.linspace(args.T, dt, args.n_steps).tolist()
     snap_time_indices = get_snap_times(args, times, args.ds)
 
     if args.data_model == "hierarchical_gaussian":
