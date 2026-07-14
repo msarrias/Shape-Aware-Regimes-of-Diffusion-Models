@@ -8,7 +8,7 @@ from tqdm import tqdm
 from lib.ou_model import backward
 from lib.stats import normalize
 from scipy.stats import wasserstein_distance
-from scripts.lib.utils import (theoretical_bimodal_gaussian_ts, centers, knn_job, ctd_job, fetch_pairs, get_snap_times)
+from lib.utils import (theoretical_bimodal_gaussian_ts, centers, knn_job, ctd_job, fetch_pairs, get_snap_times)
 
 def main(
         dims,
@@ -147,7 +147,7 @@ if __name__ == "__main__":
     sys.setrecursionlimit(10000)
     normalization = ["shift_center", "mean", "volume"]
     exp_path = Path("/extra/shared/groups/marinaivan/data_marina/recurrence_matrices/test_data")
-    ds = [2, 50, 256, 1024, 16384]
+    ds = [2, 1024, 16384] # 50, 256,
     mu = 4
     n_samples_list = [1000]#, 3000, 6000, 10000]
     n_steps = 1000
