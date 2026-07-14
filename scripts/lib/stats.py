@@ -13,25 +13,10 @@ def scale_and_shift(
 def normalize(
         list_values: list,
         norm_type: str,
-        global_list_values: np.ndarray | None,
         clipping: bool = False,
         clip_percentile: float = 95
 ):
     arr = np.asarray(list_values)
-
-    if norm_type == "log_global_scale_and_shift":
-        log_arr = np.log1p(arr)
-
-        if clipping:
-            upper = np.percentile(global_list_values, clip_percentile)
-            lower = np.percentile(global_list_values, 100 - clip_percentile)
-            log_arr = np.clip(log_arr, lower, upper)
-        else:
-            lower = np.min(log_arr)
-            upper = np.max(log_arr)
-
-        return (log_arr - lower) / (upper - lower)
-
     if clipping:
         upper = np.percentile(arr, clip_percentile)
         lower = np.percentile(arr, 100 - clip_percentile)
