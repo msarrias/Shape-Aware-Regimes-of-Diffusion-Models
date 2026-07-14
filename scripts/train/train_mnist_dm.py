@@ -9,7 +9,10 @@ import Unet
 import Plot
 import Diffusion
 import loader
-import cfg
+from lib.diffusion_model import unet as Unet
+from lib.diffusion_model import diffusion as Diffusion
+from lib.diffusion_model import loader
+from lib.diffusion_model import cfg
 import joblib
 
 
