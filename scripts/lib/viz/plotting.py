@@ -1029,10 +1029,10 @@ def plot_normalization_comparison(norm_ctds_dict, ds, norm_type, log_transform, 
                             color=colors[norm], lw=1.3, alpha=0.9)
 
                 if row_idx == 0:
-                    ax.set_title(f'$D={d}$', fontsize=10)
+                    ax.set_title(f'$D={d}$', fontsize=14)
                 if col_idx == 0:
                     row_label = f"{'log' if transform else 'raw'}, {'clip' if clip else 'no clip'}"
-                    ax.set_ylabel(row_label, fontsize=8)
+                    ax.set_ylabel(row_label, fontsize=14)
 
                 ax.spines['top'].set_visible(False)
                 ax.spines['right'].set_visible(False)
@@ -1040,9 +1040,9 @@ def plot_normalization_comparison(norm_ctds_dict, ds, norm_type, log_transform, 
             row_idx += 1
 
     handles = [plt.Line2D([0], [0], color=colors[n], lw=2, label=n) for n in norm_type]
-    fig.legend(handles=handles, loc='upper center', ncol=2, bbox_to_anchor=(0.5, 1.02),
-               fontsize=8, frameon=False)
-    fig.supxlabel('snapshot t', fontsize=9)
-    fig.supylabel(f'normalized CTD std', fontsize=9)
+    fig.legend(handles=handles, loc='upper center', ncol=2, bbox_to_anchor=(0.5, 1.05),
+               fontsize=14, frameon=False)
+    fig.supxlabel('snapshot t', fontsize=14)
+    fig.supylabel(f'normalized CTD std', fontsize=14)
     fig.tight_layout()
     return fig
