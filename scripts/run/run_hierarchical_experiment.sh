@@ -10,7 +10,7 @@ STEPS=1000
 SEED=123
 DS_LIST="3"
 
-KERNEL="hierarchical_gaussian"
+KERNEL="gaussian"
 LAPLACIAN="unnormalized"
 NORM="log_scale_and_shift"
 MODEL="bimodal"
