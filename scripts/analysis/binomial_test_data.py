@@ -130,7 +130,7 @@ def main(
                                 for value in ctds_list
                             ]
                         norm_ctds = [
-                            normalize(list_values=value, norm_type=norm, global_list_values=None)
+                            normalize(list_values=value, norm_type=norm)
                             for value in ctds_list
                         ]
                         num_graphs = len(norm_ctds)
