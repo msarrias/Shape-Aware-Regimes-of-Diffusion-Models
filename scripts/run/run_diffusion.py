@@ -5,6 +5,7 @@ from torch import nn
 import sys
 import os
 
+from lib.diffusion_model import loader
 from lib.diffusion_model.unet import UNet
 from lib.diffusion_model.diffusion import DiffusionConfig, train
 from lib.diffusion_model.cfg import load_config
