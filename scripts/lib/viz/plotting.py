@@ -163,7 +163,7 @@ def create_cont_sasne_animation(
     scatter_head = ax.scatter([], [], c='red', s=100, edgecolors='white', zorder=6)
     line_tail, = ax.plot([], [], c='blue', alpha=0.6, lw=2, zorder=5)
     
-    ax.set_title(f"d={d}", fontsize=14)
+    ax.set_title(f"D={d}", fontsize=14)
     ax.set_xlabel("SASNE1")
     ax.set_ylabel("SASNE2")
     ax.set_xlim(embedding[:, 0].min() - 0.7, embedding[:, 0].max() + 0.7)
@@ -229,7 +229,7 @@ def create_animated_embedding(
     fig, ax = plt.subplots(figsize=(8, 6))
     ax.set_xlim(embedding[:, 0].min() - 1.5, embedding[:, 0].max() + 1.5)
     ax.set_ylim(embedding[:, 1].min() - 1.5, embedding[:, 1].max() + 1.5)
-    ax.set_title(f"d={d}", fontsize=14)
+    ax.set_title(f"D={d}", fontsize=14)
     ax.set_xlabel("SASNE1")
     ax.set_ylabel("SASNE2")
 
@@ -501,7 +501,7 @@ def plot_sagd_heatmap_row(
         ax_heat.axvline(x=ts_idx + 0.5, color='red', linestyle='--', alpha=0.8, label=f'$t_s = {ts:.2f}$')
         ax_heat.axhline(y=ts_idx + 0.5, color='red', linestyle='--', alpha=0.8)
 
-        ax_heat.set_title(f"d={d}", fontsize=16)
+        ax_heat.set_title(f"D={d}", fontsize=16)
         if i % max_cols == 0:
             ax_heat.set_ylabel("Time", fontsize=12)
         ax_heat.legend(loc='upper left')
@@ -539,7 +539,7 @@ def plot_sagd_heatmap(
     ax.axvline(x=ts_idx + 0.5, color='red', linestyle='--', alpha=0.8, label=f'$t_s = {ts}$')
     ax.axhline(y=ts_idx + 0.5, color='red', linestyle='--', alpha=0.8)
 
-    plt.title(f"SAGD Distance Matrix (d={d})", fontsize=14)
+    plt.title(f"SAGD Distance Matrix (D={d})", fontsize=14)
     plt.xlabel("Time", fontsize=12)
     plt.ylabel("Time", fontsize=12)
     plt.legend(loc='upper left')
@@ -569,6 +569,7 @@ def _draw_sagd_heatmap_with_prob(
         x_final:np.ndarray=None,
         colors:list=None,
         ctds=None,
+        dense_threshold_t=None
 ):
     def find_time_idx(time_snaps, t):
         time_snaps = np.asarray(time_snaps, dtype=float)
@@ -588,6 +589,22 @@ def _draw_sagd_heatmap_with_prob(
     ax_hm.set_xticklabels(tick_labels, rotation=45)
     ax_hm.set_yticks(heat_indices + 0.5)
     ax_hm.set_yticklabels(tick_labels, rotation=0)
+
+    time_arr = np.asarray(time_vector, dtype=float)
+    all_idx = np.arange(n_samples)
+    ax_hm.set_xticks(all_idx + 0.5, minor=True)
+    ax_hm.set_yticks(all_idx + 0.5, minor=True)
+    ax_hm.tick_params(axis='both', which='minor', length=2, width=0.5, color='white')
+
+    if dense_threshold_t is not None:
+        for idx, xtick, ytick in zip(heat_indices, ax_hm.get_xticklabels(), ax_hm.get_yticklabels()):
+            is_dense = time_arr[idx] <= dense_threshold_t
+            color = 'black' if is_dense else '#888888'
+            weight = 'bold' if is_dense else 'normal'
+            xtick.set_color(color)
+            xtick.set_fontweight(weight)
+            ytick.set_color(color)
+            ytick.set_fontweight(weight)
 
     if ts is not None:
         ts_idx = find_time_idx(time_vector, ts)
@@ -635,12 +652,12 @@ def _draw_sagd_heatmap_with_prob(
         ax_prob.tick_params(axis='x', which='both', bottom=False, labelbottom=False)
         ax_prob.set_ylabel("φ(t)", fontsize=12)
         if model == 'synthetic':
-            ax_prob.set_title(f"{distance} Distance Matrix (d={d})", fontsize=14)
+            ax_prob.set_title(f"{distance} Distance Matrix (D={d})", fontsize=14)
         else:
             ax_prob.set_title(f"{distance} Distance Matrix", fontsize=14)
         sns.despine(ax=ax_prob, top=True, right=True, bottom=True, left=False)
     elif model == 'synthetic':
-        ax_hm.set_title(f"{distance} Distance Matrix (d={d})", fontsize=14)
+        ax_hm.set_title(f"{distance} Distance Matrix (D={d})", fontsize=14)
     else:
         ax_hm.set_title(f"{distance} Distance Matrix", fontsize=14)
 
@@ -692,7 +709,7 @@ def _draw_sagd_heatmap_with_prob(
             ax_sc.set_xlabel(f'TSNE 1', fontsize=10)
             ax_sc.set_ylabel(f'TSNE 2', fontsize=10)
         if model=='synthetic':
-            ax_sc.set_title(f't=0 (d={d})', fontsize=10)
+            ax_sc.set_title(f't=0 (D={d})', fontsize=10)
         else:
             ax_sc.set_title(f't=0', fontsize=10)
         sns.despine(ax=ax_sc)
@@ -750,6 +767,7 @@ def plot_sagd_heatmap_row_with_prob(
     x_final_list=None,
     colors_list=None,
     show_legend=True,
+    dense_threshold_t=None,
 ):
     num_plots = len(W_list)
     fig, axes = plt.subplots(
@@ -779,7 +797,8 @@ def plot_sagd_heatmap_row_with_prob(
             ctds=ctds_list[i] if ctds_list is not None else None,
             x_final=x_final_list[i] if x_final_list is not None else None,
             colors=colors_list[i] if colors_list is not None else None,
-            model=model
+            model=model,
+            dense_threshold_t=dense_threshold_t
         )
 
     if save_fig_path:
