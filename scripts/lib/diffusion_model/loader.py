@@ -32,7 +32,7 @@ def subloader(torch_set, n_images, include_list=[], props=[]):
     return torch_set
 
 
-def load_MNIST(config, include_list=[1,8], props=[1/2, 1/2], loadtest=False):
+def load_mnist(config, include_list=[1,8], props=[1/2, 1/2], loadtest=False):
     '''
     Parameters
     ----------
@@ -59,15 +59,15 @@ def load_MNIST(config, include_list=[1,8], props=[1/2, 1/2], loadtest=False):
           # transforms.Normalize((0.5,), (0.5,))
          ])
     
-    trainset = torchvision.datasets.MNIST(root=config.path_data, train=True,
-                                            download=False, transform=transform)
+    trainset = torchvision.datasets.MNIST(
+        root=config.path_data, train=True, download=False, transform=transform
+    )
     
     # Class indices
     classes = np.arange(0, 10)
     classes = itemgetter(*include_list)(classes)
     
-    trainset = subloader(trainset, config.n_images, 
-                         include_list=include_list, props=props)
+    trainset = subloader(trainset, config.n_images, include_list=include_list, props=props)
     
     mean = 0.0
     std = 1.0
