@@ -12,7 +12,7 @@ def load_config(DATASET):
     if DATASET == 'mnist':
         config.IMG_SHAPE = (1, 32, 32)
         config.BATCH_SIZE = 128
-        config.path_data = '../data/'
+        config.path_data = '/extra/shared/groups/marinaivan/data_marina/datasets/'
         config.CENTER = True
         config.STANDARDIZE = False
         config.n_images = 15000 #10000
