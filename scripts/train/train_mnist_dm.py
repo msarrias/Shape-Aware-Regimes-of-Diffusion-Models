@@ -16,7 +16,7 @@ from lib.diffusion_model import cfg
 import joblib
 
 
-DATASET = 'MNIST'
+DATASET = 'mnist'
 config = cfg.load_config(DATASET)
 # config.n_images = 2000
 config.DEVICE = 'cuda:0' if torch.cuda.is_available() else 'cpu'
