@@ -65,8 +65,7 @@ def parse_args() -> argparse.Namespace:
             "norm_wrt_volume",
             "norm_wrt_avg_ctd",
             "scale_and_shift",
-            "log_scale_and_shift",
-            "log_global_scale_and_shift",
+            "log_scale_and_shift"
         ],
     )
     parser.add_argument("--laplacian", type=str, default="unnormalized")
