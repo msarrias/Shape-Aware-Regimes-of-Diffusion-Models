@@ -43,8 +43,6 @@ if __name__ == '__main__':
                                                   shuffle=False, 
                                                   num_workers=2,
                                                   pin_memory=False)
-
-if __name__ == '__main__':
     trainloader = torch.utils.data.DataLoader(trainset,
                                               batch_size=len(trainset),
                                               shuffle=True, 
@@ -59,7 +57,6 @@ if __name__ == '__main__':
     Lambda = torch.lobpcg(cov)[0].item()
     print('Largest eigenvalue is {:.4f}'.format(Lambda))
 
-if __name__ == '__main__':
     model = UNet(
         input_channels = config.IMG_SHAPE[0],
         output_channels = config.IMG_SHAPE[0],
@@ -70,14 +67,8 @@ if __name__ == '__main__':
     )
     # model = nn.DataParallel(model, device_ids = config.DEVICE[0, 1])
     model.to(config.DEVICE)
-
-if __name__ == '__main__':
     n_params = sum(p.numel() for p in model.parameters())
-    print('{:.2f}M'.format(n_params/1e6))
-
-# In[] Training and saving
-
-if __name__ == '__main__':
+    print('{:.2f}M'.format(n_params / 1e6))
     optimizer = torch.optim.Adam(model.parameters(), lr=config.LR)
     df = DiffusionConfig(
         n_steps = config.TIMESTEPS,
