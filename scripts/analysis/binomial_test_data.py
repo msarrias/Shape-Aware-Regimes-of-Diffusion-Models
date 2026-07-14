@@ -8,7 +8,7 @@ from tqdm import tqdm
 from lib.ou_model import backward
 from lib.stats import normalize
 from scipy.stats import wasserstein_distance
-from utils import (theoretical_bimodal_gaussian_ts, centers, knn_job, ctd_job, fetch_pairs, get_snap_times)
+from scripts.lib.utils import (theoretical_bimodal_gaussian_ts, centers, knn_job, ctd_job, fetch_pairs, get_snap_times)
 
 def main(
         dims,

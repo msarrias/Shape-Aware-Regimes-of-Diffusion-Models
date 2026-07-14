@@ -6,7 +6,7 @@ import argparse
 import logging
 from pathlib import Path
 from logger import setup_logging, parse_args
-from utils import (
+from scripts.lib.utils import (
     fetch_pairs,
     build_edges_to_inject,
     construct_graph_job,
