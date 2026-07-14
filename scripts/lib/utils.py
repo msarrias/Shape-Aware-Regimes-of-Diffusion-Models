@@ -123,16 +123,12 @@ def ctds_job(
             delayed(ctd_job)(W_i, args.laplacian)
             for W_i in tqdm(w_results, total=len(w_results), desc="CTD Logic")
         )
-        all_log_ctds = None
-        if args.norm_type == "log_global_scale_and_shift":
-            all_log_ctds = np.concatenate([np.log1p(triu_i) for triu_i in ctds])
         ctds_dict = {
             t: {
                 "ctds":triu_i,
                 "norm_ctds": normalize(
                     list_values=triu_i,
                     norm_type=args.norm_type,
-                    global_list_values=all_log_ctds,
                     clipping=args.clipping,
                 )
             }
