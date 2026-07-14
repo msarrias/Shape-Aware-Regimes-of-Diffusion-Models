@@ -569,18 +569,21 @@ def _draw_sagd_heatmap_with_prob(
         x_final:np.ndarray=None,
         colors:list=None,
         ctds=None,
-        dense_threshold_t=None
+        dense_threshold_t=None,
+        clipping=True,
 ):
     def find_time_idx(time_snaps, t):
         time_snaps = np.asarray(time_snaps, dtype=float)
         return np.argmin(np.abs(time_snaps - t))
 
     n_samples = len(time_vector)
-    p5, p95 = np.percentile(W, 5), np.percentile(W, 95)
-    W_norm = np.clip((W - p5) / (p95 - p5), 0, 1) if p95 > p5 else W - p5
-
-    # W_min, W_max = W.min(), W.max()
-    # W_norm = (W - W_min) / (W_max - W_min) if W_max > W_min else W - W_min
+    if clipping:
+        p5, p95 = np.percentile(W, 5), np.percentile(W, 95)
+        W_clipped = np.clip(W, p5, p95)
+        W_norm = (W_clipped - p5) / (p95 - p5)
+    else:
+        W_min, W_max = W.min(), W.max()
+        W_norm = (W - W_min) / (W_max - W_min) if W_max > W_min else W - W_min
     sns.heatmap(W_norm, cmap='viridis', ax=ax_hm, cbar=False, square=True, vmin=0, vmax=1)
 
     heat_indices = np.linspace(0, n_samples - 1, 8, dtype=int)
@@ -728,6 +731,7 @@ def plot_sagd_heatmap_with_prob(
     save_fig_path=None,
     ctds=None,
     show_legend=True,
+    clipping=True
 ):
     fig, ax_hm = plt.subplots(figsize=(8, 9))
     _draw_sagd_heatmap_with_prob(
@@ -744,6 +748,7 @@ def plot_sagd_heatmap_with_prob(
         show_prob=show_prob,
          distance=distance,
         ctds=ctds,
+        clipping=clipping
     )
     if save_fig_path:
         plt.savefig(save_fig_path, dpi=300, bbox_inches='tight')
@@ -768,6 +773,7 @@ def plot_sagd_heatmap_row_with_prob(
     colors_list=None,
     show_legend=True,
     dense_threshold_t=None,
+    clipping=True
 ):
     num_plots = len(W_list)
     fig, axes = plt.subplots(
@@ -798,7 +804,8 @@ def plot_sagd_heatmap_row_with_prob(
             x_final=x_final_list[i] if x_final_list is not None else None,
             colors=colors_list[i] if colors_list is not None else None,
             model=model,
-            dense_threshold_t=dense_threshold_t
+            dense_threshold_t=dense_threshold_t,
+            clipping=clipping
         )
 
     if save_fig_path:
