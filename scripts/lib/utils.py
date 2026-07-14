@@ -189,7 +189,7 @@ def sgd_matrix_job(
 ) -> np.ndarray:
     if not sgd_file.exists():
         graphs_eigvec_list = Parallel(n_jobs=args.threads)(
-            delayed(_eigen_decompose_job)(W_i, args.laplacian, norm=True)
+            delayed(eigen_decompose_job)(W_i, args.laplacian, norm=True)
             for W_i in tqdm(w_list, total=len(w_list), desc="Eigen-decomposition SGD")
         )
         distances = Parallel(n_jobs=args.threads)(
