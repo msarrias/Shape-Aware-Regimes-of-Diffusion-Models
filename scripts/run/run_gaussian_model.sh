@@ -14,8 +14,8 @@ LAPLACIAN="unnormalized"
 MODEL="bimodal_gaussian"
 DISTANCE="SAGD"
 SAVE_PATH="/extra/shared/groups/marinaivan/data_marina/recurrence_matrices/"
-EXP_NAME="scale_and_shift_log_scale_bimodal_experiment"
-NORM="scale_and_shift"
+EXP_NAME="scale_and_shift_log_scale_bimodal"
+NORM="log_scale_and_shift"
 
 python ../analysis/sagd_pipeline.py \
     --exp_name "$EXP_NAME" \
