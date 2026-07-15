@@ -125,7 +125,7 @@ def run_synthetic(exp_path: Path, args: argparse.Namespace, logger: logging.Logg
 
 def main() -> None:
     args = parse_args()
-    sys.setrecursionlimit(2000)
+    sys.setrecursionlimit(max(2000, args.n_samples + 100))
     torch.manual_seed(args.seed)
 
     exp_path = Path(args.save_path) / args.exp_name if args.save_path else Path(f"data/{args.exp_name}")
