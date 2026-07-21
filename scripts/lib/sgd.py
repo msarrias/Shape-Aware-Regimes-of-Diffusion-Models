@@ -1,7 +1,7 @@
 import logging
 import numpy as np
 from scipy.stats import wasserstein_distance
-from lib.spectral import normalized_laplacian, unnormalized_laplacian
+from lib.spectral import normalized_laplacian, unnormalized_laplacian, solve_and_sort_std_eigv_problem
 import scipy.linalg as la
 
 
@@ -20,22 +20,6 @@ def normalize_eigenvectors(
     
     return (Phi - col_min) / col_range
 
-def solve_and_sort_std_eigv_problem(
-        matrix: np.ndarray,
-):
-    # eigvc[:, i] is the i-th eigenvector
-    eigv, eigvc = la.eig(matrix)
-
-    # la.eig returns complex types
-    eigv = eigv.real
-    eigvc = eigvc.real
-
-    # la.eig is unordered
-    idx = eigv.argsort()
-    eigv = eigv[idx]
-    eigvc = eigvc[:, idx]  # column-wise
-
-    return eigv, eigvc
 
 def eigen_decompose_job(
         W: np.ndarray,

@@ -16,17 +16,9 @@ def normalized_laplacian(W):
 
 
 def solve_and_sort_std_eigv_problem(matrix):
-    """Solves the eigenvalue problem and returns sorted (values, vectors)."""
+    """Solves the eigenvalue problem and returns sorted (values, vectors). 
+    Assumes that input Laplacian is real symmetric.
+    """
     # eigvc[:, i] is the i-th eigenvector
-    eigv, eigvc = la.eig(matrix)
-
-    # la.eig returns complex types
-    eigv = eigv.real
-    eigvc = eigvc.real
-
-    # la.eig is unordered
-    idx = eigv.argsort()
-    eigv = eigv[idx]
-    eigvc = eigvc[:, idx]  # column-wise
-
+    eigv, eigvc = la.eigh(matrix)
     return eigv, eigvc
