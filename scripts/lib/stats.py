@@ -10,6 +10,14 @@ def scale_and_shift(
     return (arr - v_min) / (v_max - v_min)
 
 
+def compress_equal_frequency(arr: np.ndarray, n_bins: int) -> np.ndarray:
+    """Compress a 1-D distribution to `n_bins` equal-frequency quantiles."""
+    arr = np.asarray(arr)
+    if arr.size <= n_bins:
+        return arr
+    return np.quantile(arr, np.linspace(0.0, 1.0, n_bins))
+
+
 def normalize(
         list_values: list,
         norm_type: str,
