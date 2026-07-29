@@ -5,7 +5,7 @@
 # Based on run_bimodal_experiment.sh.
 
 # Configuration
-THREADS=20
+THREADS=48
 MU=4.0
 T=10.0
 STEPS=1000
@@ -26,7 +26,7 @@ for SAMPLES in $SAMPLES_LIST; do
 
     echo "Running experiment: $EXP_NAME | norm: $NORM | n_samples: $SAMPLES"
 
-    python ../analysis/sagd_pipeline.py \
+    python scripts/analysis/sagd_pipeline.py \
         --exp_name "$EXP_NAME" \
         --ds $DS \
         --threads $THREADS \
