@@ -13,7 +13,7 @@ from tqdm import tqdm
 from typing import Any
 
 from lib.adaptive_knn import AdaptiveKNNGraph
-from lib.clustering import cluster_distance_matrix
+from lib.interval_clustering import cluster_distance_matrix
 from lib.ou_model import backward, theoretical_bimodal_gaussian_ts, centers
 from lib.sgd import compute_sgd, eigen_decompose_job
 from lib.stats import normalize, compress_equal_frequency

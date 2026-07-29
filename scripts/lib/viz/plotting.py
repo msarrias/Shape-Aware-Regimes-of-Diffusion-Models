@@ -730,6 +730,7 @@ def plot_sagd_heatmap_with_prob(
     distance,
     show_prob=True,
     tsagd=None,
+    t_star=None,
     save_fig_path=None,
     ctds=None,
     show_legend=True,
@@ -745,6 +746,7 @@ def plot_sagd_heatmap_with_prob(
         mu=mu,
         std=std,
         tsagd=tsagd,
+        t_star=t_star,
         show_ylabel=True,
         show_legend=show_legend,
         show_prob=show_prob,
@@ -755,6 +757,7 @@ def plot_sagd_heatmap_with_prob(
     if save_fig_path:
         plt.savefig(save_fig_path, dpi=300, bbox_inches='tight')
     plt.show()
+    return fig, ax_hm
 
 
 def plot_sagd_heatmap_row_with_prob(
