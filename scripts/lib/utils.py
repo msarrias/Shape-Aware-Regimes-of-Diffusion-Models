@@ -25,7 +25,10 @@ def ctd_job(w_result: np.ndarray, laplacian: str) -> np.ndarray:
 
 
 def knn_job(data: np.ndarray, edges_to_inject: list, kernel: str, sigma: Any = None) -> tuple:
-    knn_obj = AdaptiveKNNGraph(data=data, edges_to_inject=edges_to_inject, kernel=kernel)
+    dist_matrix = squareform(pdist(data, metric='euclidean'))
+    knn_obj = AdaptiveKNNGraph(
+        dist_matrix=dist_matrix, edges_to_inject=edges_to_inject, kernel=kernel
+    )
     w_matrix = knn_obj.compute_W(sigma=sigma)
     return knn_obj.k, (knn_obj.sigma if kernel == "gaussian" else None), w_matrix
 

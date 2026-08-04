@@ -1,4 +1,5 @@
 import numpy as np
+from scipy.spatial.distance import pdist, squareform
 from sklearn.manifold import TSNE
 from graph_distance import get_symbiharmonic_coords
 import time
@@ -6,7 +7,7 @@ from lib.adaptive_knn import AdaptiveKNNGraph
 
 
 def SASNE(data, n_components=2):
-    obj_knn = AdaptiveKNNGraph(data)
+    obj_knn = AdaptiveKNNGraph(squareform(pdist(data, metric='euclidean')))
     W = obj_knn.compute_W() #construct_graph(data)
     res = get_symbiharmonic_coords(W)
     Z, eigenval = res

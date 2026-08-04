@@ -1,18 +1,16 @@
-from scipy.spatial.distance import pdist, squareform
 import numpy as np
 
 
 class AdaptiveKNNGraph:
     def __init__(
             self,
-            data: np.ndarray,
+            dist_matrix: np.ndarray,
             min_k: int = 5,
             edges_to_inject: list = [],
             kernel='gaussian'
     ):
-        self.data = data
         self.min_k = min_k
-        self.dist_matrix = squareform(pdist(data, metric='euclidean'))
+        self.dist_matrix = np.asarray(dist_matrix, dtype=float).copy()
         self.n_samples = len(self.dist_matrix)
         self.kernel = kernel
         if edges_to_inject is not None and len(edges_to_inject) > 0:
