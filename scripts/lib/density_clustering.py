@@ -56,9 +56,7 @@ def check_distance_matrix(distances: np.ndarray) -> np.ndarray:
 
 def estimate_dc(D: np.ndarray, neighbor_frac: float = 0.02) -> float:
     """
-    Pick d_c so that the average number of neighbours
-    is 1-2% of the total number of points, i.e. the `neighbor_frac` quantile of the
-    off-diagonal distances.
+    Pick d_c so that the average number of neighbours is 1-2% of the total number of points
     """
     if not 0.0 < neighbor_frac < 1.0:
         raise ValueError(f"neighbor_frac must be in (0, 1), got {neighbor_frac}")
@@ -79,10 +77,8 @@ def estimate_dc(D: np.ndarray, neighbor_frac: float = 0.02) -> float:
 
 def local_density(D: np.ndarray, d_c: float, kernel: str = "gaussian") -> np.ndarray:
     """
-    Local density rho_i. `cutoff` is Eq. 1 of the paper (number of points closer than
-    d_c); `gaussian` is the exponential kernel the paper recommends when the number of
-    points is small, which is the case for a SAGD matrix (~10^2 snapshots).
-    Self-contributions are excluded in both cases.
+    Local density of the point.
+    `cutoff` is number of points closer than d_c; `gaussian` is the exponential kernel.
     """
     kernels = ["gaussian", "cutoff"]
 
@@ -98,9 +94,7 @@ def local_density(D: np.ndarray, d_c: float, kernel: str = "gaussian") -> np.nda
 
 def density_order(rho: np.ndarray) -> np.ndarray:
     """
-    Indices sorted by decreasing density, ties broken by index. This gives a strict
-    total order, so "higher density" is never mutual and every point has a
-    well-defined nearest neighbour of higher density.
+    Indices sorted by decreasing density, ties broken by index.
     """
     return np.lexsort((np.arange(rho.size), -rho))
 
@@ -110,9 +104,8 @@ def min_higher_density_distance(
     rho: np.ndarray,
 ) -> tuple[np.ndarray, np.ndarray]:
     """
-    Eq. 2: delta_i is the distance to the closest point of higher density. For the
-    global maximum, delta is conventionally max_j d_ij. Also returns nneigh, the index
-    of that closer-and-denser point (-1 for the global maximum).
+    The distance to the closest point of higher density and its index. For the
+    global maximum, delta is conventionally max_j d_ij.
     """
     n = D.shape[0]
     order = density_order(rho)
@@ -120,8 +113,6 @@ def min_higher_density_distance(
     delta = np.zeros(n)
     nneigh = np.full(n, -1, dtype=int)
 
-    # order[0] is the global density maximum; every other point has at least one
-    # predecessor in `order` that is strictly denser.
     for rank, i in enumerate(order[1:], start=1):
         denser = order[:rank]
         best = denser[np.argmin(D[i, denser])]
@@ -137,34 +128,14 @@ def min_higher_density_distance(
 def select_centers(
     rho: np.ndarray,
     delta: np.ndarray,
-    n_clusters: int | None = None,
-    rho_min: float | None = None,
-    delta_min: float | None = None,
+    n_clusters: int | None = None
 ) -> np.ndarray:
     """
-    Pick the cluster centers off the decision graph: points with both high rho and
-    high delta. Precedence is explicit rho_min/delta_min thresholds, then n_clusters
-    (top-k by gamma), then the automatic rule -- rank gamma = rho * delta in
-    decreasing order and cut at its largest drop (paper Fig. 4B).
-
-    Centers are returned ordered by descending gamma.
+    Pick the cluster centers off the decision graph based on rank gamma = rho * delta.
+    If `n_clusters` is not given, sort in decreasing order and cut at its largest drop.
     """
     gamma = rho * delta
     order = np.argsort(-gamma, kind="stable")
-
-    if rho_min is not None or delta_min is not None:
-        mask = np.ones(rho.size, dtype=bool)
-        if rho_min is not None:
-            mask &= rho > rho_min
-        if delta_min is not None:
-            mask &= delta > delta_min
-        centers = order[mask[order]]
-        if centers.size == 0:
-            raise ValueError(
-                "No point passes the rho_min/delta_min thresholds; "
-                "loosen them or read them off the decision graph"
-            )
-        return centers
 
     if n_clusters is not None:
         if not 1 <= n_clusters <= rho.size:
@@ -174,8 +145,6 @@ def select_centers(
         return order[:n_clusters]
 
     ranked = gamma[order]
-    # The gap between consecutive ranked gammas; cutting after the largest one
-    # separates the peaks from the bulk. k=1 if the top point dominates.
     gaps = ranked[:-1] - ranked[1:]
     k = int(np.argmax(gaps)) + 1
 
@@ -191,9 +160,8 @@ def assign_labels(
     centers: np.ndarray,
 ) -> np.ndarray:
     """
-    Single-pass assignment: walking points in order of decreasing density, each
-    non-center takes the label of its nearest neighbour of higher density (which has
-    necessarily already been labelled). No objective function is iterated.
+    Iterating over points in order of decreasing density; each
+    non-center takes the label of its nearest neighbour of higher density.
     """
     n = rho.size
     labels = np.full(n, -1, dtype=int)
@@ -217,8 +185,7 @@ def compute_halo(
     """
     Split each cluster into a core and a halo. The border region of a cluster is the
     set of its points lying within d_c of a point assigned to another cluster; rho_b
-    is the highest density in that border region, and points below it are halo
-    (suitable to be considered noise).
+    is the highest density in that border region, and points below it are halo (~ noise).
     """
     n = D.shape[0]
     halo = np.zeros(n, dtype=bool)
@@ -309,11 +276,8 @@ def cluster_sagd_matrix(
     """
     Cluster a SAGD distance matrix and return {snapshot index -> cluster label}.
 
-    Keys are row indices into `distances`; row i corresponds to the i-th snapshot time
-    (times are not stored alongside `SAGD.jbl`, so the caller maps them back). Labels
-    run 0..k-1 ordered by descending gamma, or -1 for halo points if `assign_halo`.
-
-    Use `density_peaks` instead if you also want rho/delta for the decision graph.
+    Keys are row indices into `distances`; row i corresponds to the i-th snapshot time. 
+    Labels run 0..k-1 ordered by descending gamma, or -1 for halo points if `assign_halo`.
     """
     result = density_peaks(
         distances,
