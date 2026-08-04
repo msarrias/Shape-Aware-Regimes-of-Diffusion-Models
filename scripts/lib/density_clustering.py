@@ -13,6 +13,8 @@ from matplotlib.axes import Axes
 from matplotlib.figure import Figure
 from pathlib import Path
 
+from lib.adaptive_knn import AdaptiveKNNGraph
+
 
 @dataclass
 class DensityPeakResult:
@@ -75,17 +77,35 @@ def estimate_dc(D: np.ndarray, neighbor_frac: float = 0.02) -> float:
     return d_c
 
 
-def local_density(D: np.ndarray, d_c: float, kernel: str = "gaussian") -> np.ndarray:
+def local_density(
+    D: np.ndarray,
+    d_c: float,
+    kernel: str = "gaussian",
+    min_k: int = 5,
+    sigma: float | None = None,
+) -> np.ndarray:
     """
     Local density of the point.
-    `cutoff` is number of points closer than d_c; `gaussian` is the exponential kernel.
+    `cutoff` counts the points closer than d_c. `gaussian` and `knn` both weight a pair
+    with gaussian kernel. `gaussian` sums those
+    weights over every other point, `knn` only over the edges of the adaptive KNN graph. 
+    
+    Left unset, `sigma` is d_c / sqrt(2) for
+    `gaussian`, recovering the paper's exp(-(d / d_c)^2), and the median distance to the
+    k-th neighbour of that graph for `knn`.
     """
-    kernels = ["gaussian", "cutoff"]
+    kernels = ["gaussian", "cutoff", "knn"]
+
+    graph = AdaptiveKNNGraph(dist_matrix=D, min_k=min_k, kernel="gaussian")
 
     if kernel == "gaussian":
-        rho = np.exp(-((D / d_c) ** 2)).sum(axis=1) - 1.0
+        rho = graph.gaussian_kernel(
+            sigma=sigma if sigma is not None else d_c / np.sqrt(2.0)
+        ).sum(axis=1) - 1.0
     elif kernel == "cutoff":
         rho = (D < d_c).sum(axis=1).astype(float) - 1.0
+    elif kernel == "knn":
+        rho = graph.compute_W(sigma=sigma).sum(axis=1)
     else:
         raise ValueError(f"Only {kernels} kernels are supported")
 
@@ -216,9 +236,9 @@ def density_peaks(
     d_c: float | None = None,
     neighbor_frac: float = 0.02,
     kernel: str = "gaussian",
+    min_k: int = 5,
+    sigma: float | None = None,
     n_clusters: int | None = None,
-    rho_min: float | None = None,
-    delta_min: float | None = None,
 ) -> DensityPeakResult:
     """
     Run density-peak clustering on a snapshot x snapshot distance matrix and return the
@@ -234,14 +254,9 @@ def density_peaks(
     elif d_c <= 0.0:
         raise ValueError(f"d_c must be positive, got {d_c}")
 
-    rho = local_density(D, d_c, kernel=kernel)
+    rho = local_density(D, d_c, kernel=kernel, min_k=min_k, sigma=sigma)
     delta, nneigh = min_higher_density_distance(D, rho)
-    centers = select_centers(
-        rho, delta,
-        n_clusters=n_clusters,
-        rho_min=rho_min,
-        delta_min=delta_min,
-    )
+    centers = select_centers(rho, delta, n_clusters=n_clusters)
     labels = assign_labels(rho, nneigh, centers)
     halo = compute_halo(D, labels, rho, d_c)
 
@@ -268,9 +283,9 @@ def cluster_sagd_matrix(
     d_c: float | None = None,
     neighbor_frac: float = 0.02,
     kernel: str = "gaussian",
+    min_k: int = 5,
+    sigma: float | None = None,
     n_clusters: int | None = None,
-    rho_min: float | None = None,
-    delta_min: float | None = None,
     assign_halo: bool = False,
 ) -> dict[int, int]:
     """
@@ -284,9 +299,9 @@ def cluster_sagd_matrix(
         d_c=d_c,
         neighbor_frac=neighbor_frac,
         kernel=kernel,
+        min_k=min_k,
+        sigma=sigma,
         n_clusters=n_clusters,
-        rho_min=rho_min,
-        delta_min=delta_min,
     )
     return result.to_dict(assign_halo=assign_halo)
 
@@ -332,6 +347,7 @@ def plot_decision_graph(
     ts: np.ndarray | None = None,
     ax: Axes | None = None,
     annotate: bool = True,
+    to_annotate: int | None = None,
     save_path: Path | None = None,
 ) -> tuple[Figure, Axes]:
     """
@@ -340,10 +356,14 @@ def plot_decision_graph(
     from any denser point. Isolated outliers sit top left (high delta, low rho).
 
     Pass `ts` (the snapshot times, row i of the distance matrix <-> ts[i]) to annotate
-    the centers with their diffusion time instead of their snapshot index.
+    the centers with their diffusion time instead of their snapshot index. `to_annotate`
+    labels that many top points by gamma = rho * delta -- the paper's own ranking, so it
+    shows which points would become centers at a larger `n_clusters`; left unset, only
+    the centers are labelled.
 
     Returns (fig, ax); writes a PNG only if `save_path` is given.
     """
+    own_figure = ax is None
     fig, ax = _figure_and_axes(ax, (6, 5))
 
     is_center = np.zeros(result.rho.size, dtype=bool)
@@ -361,7 +381,12 @@ def plot_decision_graph(
     )
 
     if annotate:
-        for i in result.centers:
+        if to_annotate is None:
+            labelled = result.centers
+        else:
+            labelled = np.argsort(-result.gamma, kind="stable")[:to_annotate]
+
+        for i in labelled:
             text = f"t={ts[i]:.2f}" if ts is not None else f"{i}"
             ax.annotate(
                 text,
@@ -373,14 +398,13 @@ def plot_decision_graph(
     ax.set_xlabel(r"$\rho$  (local density)", fontsize=12)
     ax.set_ylabel(r"$\delta$  (distance to closest denser point)", fontsize=12)
     ax.set_title(
-        r"Decision graph  ($d_c$ = {:.3g}, {} clusters)".format(
-            result.d_c, result.centers.size
-        ),
+        r"Decision graph  ({} clusters)".format(result.centers.size),
         fontsize=12,
     )
     ax.legend(frameon=False, fontsize=9)
 
-    fig.tight_layout()
+    if own_figure:
+        fig.tight_layout()
     if save_path:
         fig.savefig(save_path, dpi=300, bbox_inches="tight")
 
@@ -405,6 +429,7 @@ def plot_labels_over_time(
 
     Returns (fig, ax); writes a PNG only if `save_path` is given.
     """
+    own_figure = ax is None
     fig, ax = _figure_and_axes(ax, (9, 2.2))
 
     labels = np.where(result.halo, -1, result.labels) if assign_halo else result.labels
@@ -427,7 +452,8 @@ def plot_labels_over_time(
     if ts is not None:
         ax.invert_xaxis()
 
-    fig.tight_layout()
+    if own_figure:
+        fig.tight_layout()
     if save_path:
         fig.savefig(save_path, dpi=300, bbox_inches="tight")
 
