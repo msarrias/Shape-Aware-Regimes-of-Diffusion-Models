@@ -174,6 +174,63 @@ def select_centers(
     return order[:k]
 
 
+def gamma_gap_score(
+    gamma: np.ndarray,
+    max_clusters: int = 10,
+) -> tuple[np.ndarray, np.ndarray]:
+    """
+    Score the candidate number of clusters as,
+
+        score(K) = log(gamma_K / gamma_{K+1}) / median gap
+
+    Returns (ks, scores) -- the candidate cluster counts and the score at each.
+    """
+    if max_clusters < 2:
+        raise ValueError(f"max_clusters must be at least 2, got {max_clusters}")
+
+    ranked = np.sort(np.asarray(gamma, dtype=float))[::-1][:max_clusters + 1]
+    ranked = ranked[ranked > 0.0]
+
+    if ranked.size < 3:
+        return np.empty(0, dtype=int), np.empty(0)
+
+    gaps = np.log(ranked[:-1]) - np.log(ranked[1:])
+    positive = gaps[gaps > 0.0]
+
+    if positive.size == 0:
+        return np.empty(0, dtype=int), np.empty(0)
+
+    ks = np.arange(2, gaps.size + 1)
+    scores = gaps[1:] / np.median(positive)
+
+    return ks, scores
+
+
+def num_cluster_candidates(
+    gamma: np.ndarray,
+    max_clusters: int = 10,
+) -> np.ndarray:
+    """
+    Candidate cluster counts, ranked by `gamma_gap_score`.
+    """
+    ks, scores = gamma_gap_score(gamma, max_clusters=max_clusters)
+
+    if ks.size == 0:
+        logging.debug("No gamma gap to rank below K={}".format(max_clusters))
+        return np.empty(0, dtype=int)
+
+    strongest_first = np.argsort(-scores, kind="stable")
+
+    logging.debug(
+        "Cluster count candidates {} with gap scores {}".format(
+            ks[strongest_first].tolist(),
+            np.round(scores[strongest_first], 4).tolist(),
+        )
+    )
+
+    return ks[strongest_first]
+
+
 def assign_labels(
     rho: np.ndarray,
     nneigh: np.ndarray,
@@ -411,6 +468,64 @@ def plot_decision_graph(
         r"Decision graph  ({} clusters)".format(result.centers.size),
         fontsize=12,
     )
+    ax.legend(frameon=False, fontsize=9)
+
+    if own_figure:
+        fig.tight_layout()
+    if save_path:
+        fig.savefig(save_path, dpi=300, bbox_inches="tight")
+
+    return fig, ax
+
+
+def plot_gamma_gap(
+    result: DensityPeakResult,
+    max_clusters: int = 10,
+    to_annotate: int = 5,
+    ax: Axes | None = None,
+    save_path: Path | None = None,
+) -> tuple[Figure, Axes]:
+    own_figure = ax is None
+    fig, ax = _figure_and_axes(ax, (5, 5))
+
+    ks, scores = gamma_gap_score(result.gamma, max_clusters=max_clusters)
+    candidates = num_cluster_candidates(result.gamma, max_clusters=max_clusters)
+
+    ax.set_xlabel("number of clusters $k$", fontsize=12)
+    ax.set_ylabel(r"gap$(k)$  /  median gap", fontsize=12)
+    ax.set_title(r"$\gamma$ gap", fontsize=12)
+
+    if ks.size == 0:
+        ax.text(0.5, 0.5, "no gap to score",
+                transform=ax.transAxes, ha="center", va="center", fontsize=11)
+        ax.set_xticks([])
+        ax.set_yticks([])
+        if own_figure:
+            fig.tight_layout()
+        if save_path:
+            fig.savefig(save_path, dpi=300, bbox_inches="tight")
+        return fig, ax
+
+    labelled = candidates[:to_annotate]
+    is_labelled = np.isin(ks, labelled)
+
+    ax.bar(ks[~is_labelled], scores[~is_labelled], color="0.7", zorder=2)
+    ax.bar(ks[is_labelled], scores[is_labelled], color="crimson", zorder=2)
+    # ax.axhline(1.0, color="0.4", linestyle="--", linewidth=1.0, zorder=1,
+    #            label="typical gap")
+
+    for k in labelled:
+        ax.annotate(
+            f"K={k}",
+            (float(k), float(scores[ks == k][0])),
+            textcoords="offset points", xytext=(0, 4), ha="center",
+            fontsize=10 if k == candidates[0] else 9,
+            fontweight="bold" if k == candidates[0] else "normal",
+            color="crimson",
+        )
+
+    ax.set_yscale("symlog", linthresh=_symlog_threshold(scores))
+    ax.set_xticks(ks)
     ax.legend(frameon=False, fontsize=9)
 
     if own_figure:
