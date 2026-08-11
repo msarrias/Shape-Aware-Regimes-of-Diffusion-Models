@@ -342,6 +342,14 @@ def draw_markers(ax: Axes, markers: dict) -> None:
                    label=f"{label} = {t:.2f}")
 
 
+def _symlog_threshold(values: np.ndarray) -> float:
+    """
+    Where a symlog axis over `values` should switch from linear to logarithmic
+    """
+    positive = values[values > 0.0]
+    return float(positive.min()) if positive.size else 1.0
+
+
 def plot_decision_graph(
     result: DensityPeakResult,
     ts: np.ndarray | None = None,
@@ -395,6 +403,8 @@ def plot_decision_graph(
                 fontsize=9, fontweight="bold",
             )
 
+    ax.set_xscale("symlog", linthresh=_symlog_threshold(result.rho))
+    ax.set_yscale("symlog", linthresh=_symlog_threshold(result.delta))
     ax.set_xlabel(r"$\rho$  (local density)", fontsize=12)
     ax.set_ylabel(r"$\delta$  (distance to closest denser point)", fontsize=12)
     ax.set_title(
