@@ -83,6 +83,56 @@ def find_third_phase_onset(
     return t_cross
 
 
+def mixture_at_time(t, mu_star, std, model='bimodal_gaussian', weights=None):
+    """
+    Parameters of the Gaussian mixture describing the OU marginal distribution at time t.
+
+    The forward process x_t = x_0*exp(-t) + sqrt(1-exp(-2t))*eps maps a mixture
+    sum_k w_k N(mu_k, sigma_k^2 I) onto sum_k w_k N(mu_k*exp(-t), Delta_k(t) I) with
+    Delta_k(t) = (1 - exp(-2t)) + sigma_k^2 * exp(-2t).
+
+    t     : float, diffusion time
+    mu_star:
+        bimodal_gaussian      — (d,) tensor or array, the single mean (components are +-mu_star)
+        hierarchical_gaussian — (K, d) array, the K cluster means
+    std   :
+        bimodal_gaussian      — scalar
+        hierarchical_gaussian — scalar or (K,) array, per-cluster std
+    weights:
+        bimodal_gaussian      — must be None, the model is equal-weighted by construction
+        hierarchical_gaussian — optional (K,) array of mixture weights; if None,
+                                uniform weights are used
+
+    Returns
+    -------
+    means     : (K, d) ndarray
+    variances : (K,)   ndarray, isotropic variance per component
+    weights   : (K,)   ndarray, sums to 1
+    """
+    if model == 'bimodal_gaussian':
+        if weights is not None:
+            raise ValueError('bimodal_gaussian is equal-weighted; `weights` must be None')
+        mu = mu_star.detach().cpu().numpy() if torch.is_tensor(mu_star) else np.asarray(mu_star)
+        mu = np.asarray(mu, dtype=float)
+        means = np.stack([mu, -mu]) * np.exp(-t)
+        sigmas = np.full(2, float(std))
+        w = np.full(2, 0.5)
+    elif model == 'hierarchical_gaussian':
+        means = np.asarray(mu_star, dtype=float) * np.exp(-t)
+        k = means.shape[0]
+        sigmas = np.broadcast_to(np.asarray(std, dtype=float), (k,))
+        if weights is None:
+            w = np.ones(k) / k
+        else:
+            w = np.asarray(weights, dtype=float)
+            w = w / w.sum()
+    else:
+        raise ValueError('Unknown model: {}'.format(model))
+
+    variances = np.clip(1 - np.exp(-2*t) + sigmas**2 * np.exp(-2*t), 1e-8, None)
+    return means, variances, w
+
+
 def score(x_t, t, mu_star, std, model='bimodal_gaussian', weights=None):
     """
     Score function for two models, both working in arbitrary dimension d.
