@@ -55,7 +55,7 @@ def main(
                 if step in snap_time_indices:
                     history[t] = x_current.T.clone().numpy()
             data_to_dump = {
-                # "history": history,
+                "history": history,
                 "params": {
                     "dim": d,
                     "times_snapshots": list(history.keys()),
@@ -146,8 +146,8 @@ def main(
 if __name__ == "__main__":
     sys.setrecursionlimit(10000)
     normalization = ["shift_center", "mean", "volume"]
-    exp_path = Path("/extra/shared/groups/marinaivan/data_marina/recurrence_matrices/test_data")
-    ds = [2, 1024, 16384] # 50, 256,
+    exp_path = Path("test_data")
+    ds = [2, 50, 256, 1024, 16384]
     mu = 4
     n_samples_list = [1000]#, 3000, 6000, 10000]
     n_steps = 1000
