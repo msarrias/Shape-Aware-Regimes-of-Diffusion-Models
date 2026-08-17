@@ -63,6 +63,8 @@ def plot_ctd_stratified(CTDs_raw, W, node_labels, time_snaps,
     """
     Plot CTD distribution stratified by within/between cluster pairs
     at selected time steps.
+
+    NOTE: Runs must be produced with `--keep_raw_ctds`.
     """
     fig, axes = plt.subplots(1, len(t_values_to_plot), 
                           figsize=(5*len(t_values_to_plot), 4))

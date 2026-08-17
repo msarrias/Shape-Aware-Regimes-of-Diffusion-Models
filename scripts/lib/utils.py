@@ -16,7 +16,7 @@ from lib.adaptive_knn import AdaptiveKNNGraph
 from lib.clustering import cluster_distance_matrix
 from lib.ou_model import backward, theoretical_bimodal_gaussian_ts, centers
 from lib.sgd import compute_sgd, eigen_decompose_job
-from lib.stats import normalize
+from lib.stats import normalize, compress_equal_frequency
 from lib.distances import ctd_matrix
 
 def ctd_job(w_result: np.ndarray, laplacian: str) -> np.ndarray:
@@ -123,17 +123,20 @@ def ctds_job(
             delayed(ctd_job)(W_i, args.laplacian)
             for W_i in tqdm(w_results, total=len(w_results), desc="CTD Logic")
         )
-        ctds_dict = {
-            t: {
-                "ctds":triu_i,
-                "norm_ctds": normalize(
-                    list_values=triu_i,
-                    norm_type=args.norm_type,
-                    clipping=args.clipping,
-                )
-            }
-            for t, triu_i in zip(time_snaps, ctds)
-        }
+        ctds_dict = {}
+        for t, triu_i in zip(time_snaps, ctds):
+            norm_ctds = normalize(
+                list_values=triu_i,
+                norm_type=args.norm_type,
+                clipping=args.clipping,
+            )
+            if args.keep_raw_ctds:
+                ctds_dict[t] = {"ctds": triu_i, "norm_ctds": norm_ctds}
+            else:
+                ctds_dict[t] = {
+                    "ctds": compress_equal_frequency(triu_i, args.n_bins),
+                    "norm_ctds": compress_equal_frequency(norm_ctds, args.n_bins),
+                }
         joblib.dump(
             {
                 "CTDs": ctds_dict,
@@ -141,6 +144,8 @@ def ctds_job(
                     "laplacian": args.laplacian,
                     "normalization": args.norm_type,
                     "ts": time_snaps,
+                    "n_bins": args.n_bins,
+                    "keep_raw_ctds": args.keep_raw_ctds,
                 },
             },
             ctd_file,

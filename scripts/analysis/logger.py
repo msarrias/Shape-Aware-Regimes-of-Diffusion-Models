@@ -73,6 +73,8 @@ def parse_args() -> argparse.Namespace:
 
     parser.add_argument("--inject_edges", action="store_true", default=False)
     parser.add_argument("--clipping", action="store_true", default=False)
+    parser.add_argument("--n_bins", type=int, default=5000)
+    parser.add_argument("--keep_raw_ctds", action="store_true", default=False)
     parser.add_argument("--generate_sasne_embedding", action="store_true", default=False)
     parser.add_argument("--sasne_dimension", type=int, default=2)
 
