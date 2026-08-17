@@ -2,8 +2,12 @@ import logging
 import numpy as np
 from scipy.stats import wasserstein_distance
 from lib.spectral import normalized_laplacian, unnormalized_laplacian, solve_and_sort_std_eigv_problem
-import scipy.linalg as la
 
+
+_LAPLACIAN_BUILDERS = {
+    "normalized": normalized_laplacian,
+    "unnormalized": unnormalized_laplacian,
+}
 
 def normalize_eigenvectors(
         Phi: np.ndarray,
@@ -24,32 +28,22 @@ def normalize_eigenvectors(
 def eigen_decompose_job(
         W: np.ndarray,
         laplacian_type: str,
-        norm:bool =True
+        norm: bool = True
 ):
-    if laplacian_type not in ("normalized", "unnormalized"):
-        raise ValueError("Unsupported laplacian_type")
+    try:
+        build_laplacian = _LAPLACIAN_BUILDERS[laplacian_type]
+    except KeyError:
+        raise ValueError(f"Unsupported laplacian_type: {laplacian_type!r}")
 
-    if laplacian_type == "normalized":
-        L = normalized_laplacian(W=W)
-
-    elif laplacian_type == "unnormalized":
-        L = unnormalized_laplacian(W=W)
-    else:
-        raise ValueError("Unsupported laplacian_type")
-
-    # Solve Eigen-problem
+    L = build_laplacian(W=W)
     eigvs, eigvecs = solve_and_sort_std_eigv_problem(matrix=L)
 
-    if np.sum(eigvs < 1e-10) > 1:
-        raise ValueError(
-            "SGD requires a single connected component."
-        )
-    Phi = eigvecs[:, 1:]
-    if norm:
-        norm_Phi = normalize_eigenvectors(Phi=Phi)
-        return norm_Phi
+    if eigvs[1] < 1e-10:
+        raise ValueError("SGD requires a single connected component.")
 
-    return Phi
+    Phi = eigvecs[:, 1:]
+    return normalize_eigenvectors(Phi=Phi) if norm else Phi
+
 
 def compute_sgd(
         Phi1: np.ndarray,
