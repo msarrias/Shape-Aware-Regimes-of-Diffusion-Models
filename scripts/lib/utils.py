@@ -24,8 +24,8 @@ def ctd_job(w_result: np.ndarray, laplacian: str) -> np.ndarray:
     return C_Gi[np.triu_indices(w_result.shape[0], k=1)]
 
 
-def knn_job(data: np.ndarray, edges_to_inject: list, kernel: str, sigma: Any = None) -> tuple:
-    knn_obj = AdaptiveKNNGraph(data=data, edges_to_inject=edges_to_inject, kernel=kernel)
+def knn_job(data: np.ndarray, edges_to_inject: list, kernel: str, max_k: int, sigma: Any = None) -> tuple:
+    knn_obj = AdaptiveKNNGraph(data=data, max_k=max_k, edges_to_inject=edges_to_inject, kernel=kernel)
     w_matrix = knn_obj.compute_W(sigma=sigma)
     return knn_obj.k, (knn_obj.sigma if kernel == "gaussian" else None), w_matrix
 
@@ -89,7 +89,7 @@ def construct_graph_job(
     time_snaps = list(history.keys())
     if not ws_file.exists():
         knn_results = Parallel(n_jobs=args.threads, backend="threading")(
-            delayed(knn_job)(history[t], edges_to_inject, args.kernel)
+            delayed(knn_job)(history[t], edges_to_inject, args.kernel, args.max_k)
             for t in tqdm(time_snaps, desc="KNN Progress")
         )
         w_results = [w for *_, w in knn_results]

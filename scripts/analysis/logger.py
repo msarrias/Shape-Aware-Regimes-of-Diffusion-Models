@@ -72,6 +72,13 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--distance", type=str, default="SAGD", choices=["SAGD", "SGD"])
 
     parser.add_argument("--inject_edges", action="store_true", default=False)
+    parser.add_argument(
+        "--max_k",
+        type=int,
+        default=15,
+        help="Largest k the KNN search may grow to while looking for connectivity; "
+             "components still disconnected at max_k are joined by a minimum spanning tree over them.",
+    )
     parser.add_argument("--clipping", action="store_true", default=False)
     parser.add_argument("--n_bins", type=int, default=5000)
     parser.add_argument("--keep_raw_ctds", action="store_true", default=False)
