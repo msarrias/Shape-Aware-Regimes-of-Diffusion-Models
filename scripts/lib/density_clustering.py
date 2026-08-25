@@ -208,7 +208,11 @@ def gamma_ratio_gain_score(
     Score the candidate number of clusters by how much the drop in ranked gamma
     steepens at the cut,
 
-        gain(K) = gamma_K^2 / (gamma_{K+1} gamma_{K-1})
+        gain(K) = (gamma_K - gamma_{K-1}) / (gamma_{K+1} - gamma_K)
+
+    Both differences are negative for descending gamma, so the gain is the drop
+    into rank K relative to the drop out of it: large when gamma falls sharply at
+    the cut and flattens after.
 
     Returns (ks, gains) -- the candidate cluster counts and the gain at each.
     """
@@ -222,7 +226,11 @@ def gamma_ratio_gain_score(
         return np.empty(0, dtype=int), np.empty(0)
 
     ks = np.arange(2, ranked.size)
-    gains = ranked[1:-1] ** 2 / (ranked[2:] * ranked[:-2])
+    before = ranked[1:-1] - ranked[:-2]
+    after = ranked[2:] - ranked[1:-1]
+    floor = np.finfo(float).eps * float(ranked[0])
+    gains = after / before
+    # gains = before / np.where(np.abs(after) > floor, after, -floor)
 
     return ks, gains
 
@@ -402,9 +410,7 @@ def _figure_and_axes(
 
 def draw_markers(ax: Axes, markers: dict) -> None:
     """
-    Draw labelled reference times (t_SAGD, t*_SAGD, ...) as dashed vertical lines on
-    a time axis. `markers` maps a legend label to either a time, or a (time, color)
-    pair if you want to fix the color; a None time is skipped.
+    Draw labelled reference times as dashed vertical lines on a time axis. 
     """
     default_colors = ["orange", "red", "magenta", "cyan", "lime"]
 
@@ -437,15 +443,9 @@ def plot_decision_graph(
     save_path: Path | None = None,
 ) -> tuple[Figure, Axes]:
     """
-    The decision graph of the paper (Fig. 1B): delta against rho. Cluster centers are
+    The decision graph : delta against rho. Cluster centers are
     the points that stand out towards the top right -- high density and anomalously far
     from any denser point. Isolated outliers sit top left (high delta, low rho).
-
-    Pass `ts` (the snapshot times, row i of the distance matrix <-> ts[i]) to annotate
-    the centers with their diffusion time instead of their snapshot index. `to_annotate`
-    labels that many top points by gamma = rho * delta -- the paper's own ranking, so it
-    shows which points would become centers at a larger `n_clusters`; left unset, only
-    the centers are labelled.
 
     Returns (fig, ax); writes a PNG only if `save_path` is given.
     """
@@ -571,7 +571,7 @@ def plot_gamma_ratio_gain(
 
     ax.set_xlabel("number of clusters $k$", fontsize=12)
     ax.set_ylabel(
-        r"$\gamma_k^2 / (\gamma_{k+1}\,\gamma_{k-1})$", fontsize=12
+        r"$(\gamma_k - \gamma_{k-1}) / (\gamma_{k+1} - \gamma_k)$", fontsize=12
     )
     ax.set_title(r"$\gamma$ ratio gain", fontsize=12)
 
@@ -627,7 +627,7 @@ def plot_labels_over_time(
     """
     The cluster label of every snapshot along the diffusion trajectory. Pass `ts` to
     put actual diffusion time on the x axis (running from t=T on the left down to
-    t~0 on the right); without it the x axis is the snapshot index.
+    t~0 on the right).
 
     `markers` overlays labelled reference times -- e.g.
     `{"$t_{SAGD}$": 2.94, "$t^*_{SAGD}$": 1.15}` -- see `draw_markers`.
