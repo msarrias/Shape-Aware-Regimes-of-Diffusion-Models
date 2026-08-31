@@ -18,7 +18,7 @@ MODEL="bimodal_gaussian"
 DISTANCE="SAGD"
 NORM="log_scale_and_shift"
 
-SAMPLES_LIST="1000 2000 4000"
+SAMPLES_LIST="1000"
 
 for SAMPLES in $SAMPLES_LIST; do
 
@@ -39,7 +39,7 @@ for SAMPLES in $SAMPLES_LIST; do
         --laplacian "$LAPLACIAN" \
         --norm_type "$NORM" \
         --data_model "$MODEL" \
-        --inject_edges \
+        --keep_raw_ctds \
         --generate_sasne_embedding \
         --distance "$DISTANCE" \
         --clipping
