@@ -7,15 +7,18 @@ class AdaptiveKNNGraph:
             self,
             data: np.ndarray,
             min_k: int = 5,
+            max_k: int = 15,
             edges_to_inject: list = [],
             kernel='gaussian'
     ):
         self.data = data
         self.min_k = min_k
+        self.max_k = max_k
         self.dist_matrix = squareform(pdist(data, metric='euclidean'))
         self.n_samples = len(self.dist_matrix)
         self.kernel = kernel
-        if edges_to_inject is not None and len(edges_to_inject) > 0:
+        self.inject = edges_to_inject is not None and len(edges_to_inject) > 0
+        if self.inject:
             self.true_dist_matrix = self.dist_matrix.copy()
             self.inject_random_edges(edges_to_inject)
         else:
@@ -117,19 +120,20 @@ class AdaptiveKNNGraph:
             dist_subset: np.ndarray = None
     ) -> int:
         """
-        Increments k until the graph becomes connected.
+        Increments k until the graph becomes connected, or until hitting the limit.
         :param dist_subset: Optional distance matrix
          for a subset of points (used in recursion)
         """
         k = self.min_k
         n = len(dist_subset) if dist_subset is not None else self.n_samples
+        k_limit = n - 1 if self.inject else min(self.max_k, n - 1)
 
-        while k < n - 1:
+        while k < k_limit:
             adj = self.get_adjacency(k=k, dist_subset=dist_subset)
             if self.is_graph_connected(adj=adj):
                 return k
             k += 1
-        return n - 1
+        return k_limit
 
     def find_components(self, adj: np.ndarray):
         """
@@ -153,6 +157,76 @@ class AdaptiveKNNGraph:
             for node in marked:
                 components[node] = count
         return components, count
+
+    def closest_pairs(
+            self,
+            comps: np.ndarray,
+            n_comps: int,
+            D: np.ndarray
+    ) -> tuple:
+        """
+        Finds the minimum distance between every pair of components and the vertices realizing it.
+        :param comps: component label of every vertex
+        :param n_comps: number of connected components
+        :param D: distance matrix of the graph
+        :return: tuple
+        """
+        members = [np.where(comps == c)[0] for c in range(1, n_comps + 1)]
+        weights = np.zeros((n_comps, n_comps))
+        pairs = {}
+
+        for a in range(n_comps):
+            for b in range(a + 1, n_comps):
+                sub_dist = D[np.ix_(members[a], members[b])]
+                i, j = np.unravel_index(np.argmin(sub_dist), sub_dist.shape)
+                weights[a, b] = weights[b, a] = sub_dist[i, j]
+                pairs[(a, b)] = (members[a][i], members[b][j])
+        return weights, pairs
+
+    def minimum_spanning_edges(
+            self,
+            weights: np.ndarray
+    ) -> list:
+        """
+        Prim's algorithm on a dense symmetric weight matrix.
+        :param weights: pairwise weights between the vertices of the tree
+        """
+        n = len(weights)
+        in_tree = np.zeros(n, dtype=bool)
+        in_tree[0] = True
+        best = weights[0].copy()
+        source = np.zeros(n, dtype=int)
+        edges = []
+
+        for _ in range(n - 1):
+            v = int(np.argmin(np.where(in_tree, np.inf, best)))
+            edges.append((int(source[v]), v))
+            in_tree[v] = True
+            closer = weights[v] < best
+            best[closer] = weights[v][closer]
+            source[closer] = v
+        return edges
+
+    def connect_components(
+            self,
+            adj: np.ndarray,
+            D: np.ndarray
+    ) -> np.ndarray:
+        """
+        Joins the connected components along a minimum spanning tree over them.
+        :param adj: Adjacency matrix of the graph
+        :param D: distance matrix of the graph
+        """
+        comps, n_comps = self.find_components(adj=adj)
+        if n_comps == 1:
+            return adj
+
+        weights, pairs = self.closest_pairs(comps=comps, n_comps=n_comps, D=D)
+        for a, b in self.minimum_spanning_edges(weights=weights):
+            vi, vj = pairs[(min(a, b), max(a, b))]
+            adj[vi, vj] = 1
+            adj[vj, vi] = 1
+        return adj
 
     def build_refined_adj(
             self,
@@ -191,6 +265,8 @@ class AdaptiveKNNGraph:
                         sub_dist = D[np.ix_(indices, indices)]
                         # Recursive call for the subcomponent
                         adj[np.ix_(indices, indices)] = self.build_refined_adj(dist_matrix=sub_dist)
+
+        adj = self.connect_components(adj=adj, D=D)
         return adj
 
     def gaussian_kernel(self, sigma=None):
