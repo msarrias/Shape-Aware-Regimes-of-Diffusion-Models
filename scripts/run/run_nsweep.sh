@@ -39,8 +39,8 @@ for SAMPLES in $SAMPLES_LIST; do
         --laplacian "$LAPLACIAN" \
         --norm_type "$NORM" \
         --data_model "$MODEL" \
+        --inject_edges \
         --keep_raw_ctds \
-        --generate_sasne_embedding \
         --distance "$DISTANCE" \
         --clipping
 

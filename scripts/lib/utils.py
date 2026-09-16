@@ -229,7 +229,7 @@ def sasne_job(
         dim: int = 2,
 ):
         if not sasne_file_path.exists():
-            from SASNE import SASNE
+            from SASNE.SASNE import SASNE
             embedding, Z = SASNE(data=distance_matrix, n_components=dim)
             joblib.dump(
                 {
