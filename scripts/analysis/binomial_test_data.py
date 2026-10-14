@@ -24,6 +24,7 @@ def main(
         snap_time_indices,
         threads,
         laplacian,
+        max_k,
         clip_perc,
         log_transform,
         clipping,
@@ -72,7 +73,7 @@ def main(
         time_snaps = list(history.keys())
         if not ws_file.exists():
             knn_results = joblib.Parallel(n_jobs=threads, backend="threading")(
-                joblib.delayed(knn_job)(history[t], edges_to_inject, kernel)
+                joblib.delayed(knn_job)(history[t], edges_to_inject, kernel, max_k)
                 for t in tqdm(time_snaps, desc="KNN Progress")
             )
             w_results = [w for *_, w in knn_results]
@@ -154,6 +155,7 @@ if __name__ == "__main__":
     T = 10.0
     threads = 20
     laplacian = "unnormalized"
+    max_k = 15
     kernel = "gaussian"
     data_model = 'bimodal_gaussian'
     norm = ['scale_and_shift', 'norm_wrt_avg_ctd']
@@ -176,6 +178,7 @@ if __name__ == "__main__":
             snap_time_indices=snap_time_indices,
             threads=threads,
             laplacian=laplacian,
+            max_k=max_k,
             clip_perc=95,
             log_transform=[True, False],
             clipping=[True, False],

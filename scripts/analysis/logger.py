@@ -71,7 +71,22 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--laplacian", type=str, default="unnormalized")
     parser.add_argument("--distance", type=str, default="SAGD", choices=["SAGD", "SGD"])
 
-    parser.add_argument("--inject_edges", action="store_true", default=False)
+    parser.add_argument(
+        "--connectivity",
+        type=str,
+        default="connect_closest",
+        choices=["inject_edges", "connect_closest"],
+        help="How KNN graph connectivity is ensured: 'inject_edges' adds random zero-distance edges and "
+             "grows k without limit; 'connect_closest' caps k at max_k and joins every pair of remaining "
+             "connected components by an edge between their closest vertices.",
+    )
+    parser.add_argument(
+        "--max_k",
+        type=int,
+        default=15,
+        help="Largest k the KNN search may grow to while looking for connectivity; "
+             "only used with --connectivity connect_closest.",
+    )
     parser.add_argument("--clipping", action="store_true", default=False)
     parser.add_argument("--n_bins", type=int, default=5000)
     parser.add_argument("--keep_raw_ctds", action="store_true", default=False)
