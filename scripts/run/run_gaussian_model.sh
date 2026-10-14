@@ -31,7 +31,7 @@ python ../analysis/sagd_pipeline.py \
     --laplacian "$LAPLACIAN" \
     --norm_type "$NORM" \
     --data_model "$MODEL" \
-    --inject_edges \
+    --connectivity inject_edges \
     --generate_sasne_embedding \
     --distance "$DISTANCE" \
     --clipping

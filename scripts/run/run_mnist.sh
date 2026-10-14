@@ -15,6 +15,6 @@ python ../analysis/sagd_pipeline.py \
       --kernel "$KERNEL" \
       --laplacian "$LAPLACIAN" \
       --norm_type "$NORM" \
-      --inject_edges \
+      --connectivity inject_edges \
       --generate_sasne_embedding \
       --clipping 

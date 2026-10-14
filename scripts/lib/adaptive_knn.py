@@ -1,8 +1,12 @@
 from scipy.spatial.distance import pdist, squareform
+import warnings
+
 import numpy as np
 
 
 class AdaptiveKNNGraph:
+    max_components_warning = 1000
+
     def __init__(
             self,
             data: np.ndarray,
@@ -158,74 +162,35 @@ class AdaptiveKNNGraph:
                 components[node] = count
         return components, count
 
-    def closest_pairs(
-            self,
-            comps: np.ndarray,
-            n_comps: int,
-            D: np.ndarray
-    ) -> tuple:
-        """
-        Finds the minimum distance between every pair of components and the vertices realizing it.
-        :param comps: component label of every vertex
-        :param n_comps: number of connected components
-        :param D: distance matrix of the graph
-        :return: tuple
-        """
-        members = [np.where(comps == c)[0] for c in range(1, n_comps + 1)]
-        weights = np.zeros((n_comps, n_comps))
-        pairs = {}
-
-        for a in range(n_comps):
-            for b in range(a + 1, n_comps):
-                sub_dist = D[np.ix_(members[a], members[b])]
-                i, j = np.unravel_index(np.argmin(sub_dist), sub_dist.shape)
-                weights[a, b] = weights[b, a] = sub_dist[i, j]
-                pairs[(a, b)] = (members[a][i], members[b][j])
-        return weights, pairs
-
-    def minimum_spanning_edges(
-            self,
-            weights: np.ndarray
-    ) -> list:
-        """
-        Prim's algorithm on a dense symmetric weight matrix.
-        :param weights: pairwise weights between the vertices of the tree
-        """
-        n = len(weights)
-        in_tree = np.zeros(n, dtype=bool)
-        in_tree[0] = True
-        best = weights[0].copy()
-        source = np.zeros(n, dtype=int)
-        edges = []
-
-        for _ in range(n - 1):
-            v = int(np.argmin(np.where(in_tree, np.inf, best)))
-            edges.append((int(source[v]), v))
-            in_tree[v] = True
-            closer = weights[v] < best
-            best[closer] = weights[v][closer]
-            source[closer] = v
-        return edges
-
     def connect_components(
             self,
             adj: np.ndarray,
             D: np.ndarray
     ) -> np.ndarray:
         """
-        Joins the connected components along a minimum spanning tree over them.
+        Joins every pair of connected components by an edge between their closest vertices,
+        making the graph over components complete.
         :param adj: Adjacency matrix of the graph
         :param D: distance matrix of the graph
         """
         comps, n_comps = self.find_components(adj=adj)
         if n_comps == 1:
             return adj
+        if n_comps > self.max_components_warning:
+            warnings.warn(
+                f"Connecting {n_comps} connected components pairwise "
+                f"({n_comps * (n_comps - 1) // 2} component pairs); this may be slow.",
+                RuntimeWarning,
+            )
 
-        weights, pairs = self.closest_pairs(comps=comps, n_comps=n_comps, D=D)
-        for a, b in self.minimum_spanning_edges(weights=weights):
-            vi, vj = pairs[(min(a, b), max(a, b))]
-            adj[vi, vj] = 1
-            adj[vj, vi] = 1
+        members = [np.where(comps == c)[0] for c in range(1, n_comps + 1)]
+        for a in range(n_comps):
+            for b in range(a + 1, n_comps):
+                sub_dist = D[np.ix_(members[a], members[b])]
+                i, j = np.unravel_index(np.argmin(sub_dist), sub_dist.shape)
+                vi, vj = members[a][i], members[b][j]
+                adj[vi, vj] = 1
+                adj[vj, vi] = 1
         return adj
 
     def build_refined_adj(

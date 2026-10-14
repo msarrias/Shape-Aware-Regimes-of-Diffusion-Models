@@ -282,7 +282,7 @@ def fetch_pairs(num_graphs: int) -> list:
 
 
 def build_edges_to_inject(args: argparse.Namespace) -> np.ndarray | None:
-    if not args.inject_edges:
+    if args.connectivity != "inject_edges":
         return None
     num_nodes = int(args.n_samples * 0.02)
     return np.random.permutation(args.n_samples)[:num_nodes].reshape(-1, 2)
