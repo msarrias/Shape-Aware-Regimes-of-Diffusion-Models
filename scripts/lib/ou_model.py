@@ -18,7 +18,7 @@ def forward(x_0, t):
     return x_t, epsilon
 
 
-def backward(x_t, t, dt, mu_star, std, model, weights=None, epsilon=None):
+def backward(x_t, t, dt, mu_star, std, model_score, epsilon=None):
     """
     Moves the Ornstein-Uhlenbeck process one step backward in time (t -> t-dt).
     This implements the discrete version of:
@@ -28,7 +28,7 @@ def backward(x_t, t, dt, mu_star, std, model, weights=None, epsilon=None):
     """
     if epsilon is None:
         epsilon = torch.randn_like(x_t)     # N(0,1)
-    s = score(x_t, t, mu_star, std, model, weights)
+    s = model_score(x_t, t, mu_star, std, **score_kwargs)
     s = torch.as_tensor(s, dtype=x_t.dtype, device=x_t.device)
     f = -x_t - 2 * s
     dW = np.sqrt(2 * dt) * epsilon                     # N(0, dt)
