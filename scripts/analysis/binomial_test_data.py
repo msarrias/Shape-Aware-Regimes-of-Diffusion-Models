@@ -5,10 +5,17 @@ import torch
 from pathlib import Path
 from tqdm import tqdm
 
-from lib.ou_model import backward
+from lib.ou_model import backward, bimodal_score
 from lib.stats import normalize
 from scipy.stats import wasserstein_distance
-from lib.utils import (theoretical_bimodal_gaussian_ts, centers, knn_job, ctd_job, fetch_pairs, get_snap_times)
+from lib.utils import (
+    theoretical_bimodal_gaussian_ts,
+    centers,
+    knn_job,
+    ctd_job,
+    fetch_pairs,
+    get_snap_times
+)
 
 def main(
         dims,
@@ -17,7 +24,6 @@ def main(
         n_samples,
         T,
         n_steps,
-        data_model,
         kernel,
         exp_path,
         dt,
@@ -49,8 +55,7 @@ def main(
                     dt=dt,
                     mu_star=mu_star,
                     std=std,
-                    model=data_model,
-                    weights=None,
+                    model_score=bimodal_score,
                 )
                 if step in snap_time_indices:
                     history[t] = x_current.T.clone().numpy()
@@ -73,7 +78,7 @@ def main(
         if not ws_file.exists():
             knn_results = joblib.Parallel(n_jobs=threads, backend="threading")(
                 joblib.delayed(knn_job)(history[t], edges_to_inject, kernel)
-                for t in tqdm(time_snaps, desc="KNN Progress")
+                for t in tqdm(time_snaps, desc=f"[D={d}] KNN Progress")
             )
             w_results = [w for *_, w in knn_results]
             k_results = [k for k, *_ in knn_results]
@@ -95,7 +100,7 @@ def main(
         if not ctd_file.exists():
             ctds = joblib.Parallel(n_jobs=threads)(
                 joblib.delayed(ctd_job)(W_i, laplacian)
-                for W_i in tqdm(w_results, total=len(w_results), desc="CTD Logic")
+                for W_i in tqdm(w_results, total=len(w_results), desc=f"[D={d}] CTD Logic")
             )
             ctds_dict = {t: triu_i for t, triu_i in zip(time_snaps, ctds)}
             joblib.dump(
@@ -116,6 +121,7 @@ def main(
                 for norm in norm_type:
                     is_clipped = 'clipped' if clip else ''
                     is_transformed = 'log_transformed' if transform else ''
+                    print(f"{norm}_{is_clipped}_{is_transformed}")
                     sagd_file = path / f"SAGD_{norm}_{is_clipped}_{is_transformed}.jbl"
                     if not sagd_file.exists():
                         pairs = fetch_pairs(num_graphs=len(time_snaps))
@@ -136,7 +142,7 @@ def main(
                         num_graphs = len(norm_ctds)
                         distances = joblib.Parallel(n_jobs=threads)(
                             joblib.delayed(wasserstein_distance)(norm_ctds[i], norm_ctds[j])
-                            for i, j in tqdm(pairs, desc="SAGD Matrix")
+                            for i, j in tqdm(pairs, desc=f"[D={d}] SAGD Matrix")
                         )
                         sagd_dist_matrix = np.zeros((num_graphs, num_graphs))
                         for (i, j), dist in zip(pairs, distances):
@@ -146,8 +152,8 @@ def main(
 if __name__ == "__main__":
     sys.setrecursionlimit(10000)
     normalization = ["shift_center", "mean", "volume"]
-    exp_path = Path("test_data")
-    ds = [2, 50, 256, 1024, 16384]
+    exp_path = Path("/extra/shared/groups/marinaivan/data_marina/recurrence_matrices/bimodal_gaussians")
+    ds = [2,50,256,1024,16384]
     mu = 4
     n_samples_list = [1000]#, 3000, 6000, 10000]
     n_steps = 1000
@@ -156,7 +162,7 @@ if __name__ == "__main__":
     laplacian = "unnormalized"
     kernel = "gaussian"
     data_model = 'bimodal_gaussian'
-    norm = ['scale_and_shift', 'norm_wrt_avg_ctd']
+    norm = ['norm_wrt_median_ctd'] #'scale_and_shift', 'norm_wrt_avg_ctd',
     clip_perc = 95
     dt = T / n_steps
     times = np.linspace(T, dt, n_steps).tolist()
@@ -169,7 +175,6 @@ if __name__ == "__main__":
             n_samples=n_samples,
             T=T,
             n_steps=n_steps,
-            data_model=data_model,
             kernel=kernel,
             exp_path=exp_path,
             dt=dt,
