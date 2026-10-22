@@ -91,7 +91,7 @@ def construct_graph_job(
     if not ws_file.exists():
         knn_results = Parallel(n_jobs=args.threads, backend="threading")(
             delayed(knn_job)(history[t], edges_to_inject, args.kernel)
-            for t in tqdm(time_snaps, desc="KNN Progress")
+            for t in tqdm(time_snaps, desc="KNN Progress", ncols=100)
         )
         w_results = [w for *_, w in knn_results]
         k_results = [k for k, *_ in knn_results]
@@ -122,7 +122,7 @@ def ctds_job(
     if not ctd_file.exists():
         ctds = Parallel(n_jobs=args.threads)(
             delayed(ctd_job)(W_i, args.laplacian)
-            for W_i in tqdm(w_results, total=len(w_results), desc="CTD Logic")
+            for W_i in tqdm(w_results, total=len(w_results), desc="CTD Logic", ncols=100)
         )
         ctds_dict = {}
         for t, triu_i in zip(time_snaps, ctds):
@@ -170,7 +170,7 @@ def sagd_job(
         num_graphs = len(norm_ctds)
         distances = Parallel(n_jobs=args.threads)(
             delayed(wasserstein_distance)(norm_ctds[i], norm_ctds[j])
-            for i, j in tqdm(pairs, desc="SAGD Matrix")
+            for i, j in tqdm(pairs, desc="SAGD Matrix", ncols=100)
         )
         sagd_dist_matrix = np.zeros((num_graphs, num_graphs))
         for (i, j), dist in zip(pairs, distances):
@@ -192,11 +192,11 @@ def sgd_matrix_job(
     if not sgd_file.exists():
         graphs_eigvec_list = Parallel(n_jobs=args.threads)(
             delayed(eigen_decompose_job)(W_i, args.laplacian, norm=True)
-            for W_i in tqdm(w_list, total=len(w_list), desc="Eigen-decomposition SGD")
+            for W_i in tqdm(w_list, total=len(w_list), desc="Eigen-decomposition SGD", ncols=100)
         )
         distances = Parallel(n_jobs=args.threads)(
             delayed(compute_sgd)(graphs_eigvec_list[i], graphs_eigvec_list[j])
-            for i, j in tqdm(pairs, desc="SGD Matrix")
+            for i, j in tqdm(pairs, desc="SGD Matrix", ncols=100)
         )
         n = len(w_list)
         sgd_dist_matrix = np.zeros((n, n))
@@ -254,7 +254,7 @@ def get_snap_times(data_model: str, mu: float, times: list, ds: list, m: int | N
         "`times` must be strictly descending (t=T -> t=0)."
     )
     last = len(times) - 1
-    if data_model not in ("bimodal_gaussian", "embedded_gaussian"):
+    if data_model not in ("bimodal_gaussian", "embedded_bimodal_gaussian"):
         return sorted(set(range(0, len(times), 10)) | {last}, reverse=True)
 
     ts_indices = sorted({
