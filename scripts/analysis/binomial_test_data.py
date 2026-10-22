@@ -18,6 +18,10 @@ from lib.utils import (
 
 from scripts.lib.ou_model import bimodal_score
 
+SCORES = {
+    "bimodal_gaussian": bimodal_score,
+    "embedded_bimodal_gaussian": embedded_score_canonical,
+}
 
 def main(
         dims,
@@ -165,7 +169,7 @@ if __name__ == "__main__":
     laplacian = "unnormalized"
     kernel = "gaussian"
     data_model = 'embedded_bimodal_gaussian'
-    model_score = embedded_score_canonical if data_model == 'embedded_bimodal_gaussian' else bimodal_score
+    model_score = SCORES[data_model]
     norm = ['norm_wrt_median_ctd'] #'scale_and_shift', 'norm_wrt_avg_ctd',
     clip_perc = 95
     dt = T / n_steps
