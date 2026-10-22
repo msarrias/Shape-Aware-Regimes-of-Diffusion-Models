@@ -38,6 +38,7 @@ def diffuse_job(
     snap_time_indices: list,
     score_data_model: callable,
     mu_star: float,
+    m: int | None,
     std: float,
     ts_theoretical: float | None,
     logger: logging.Logger,
@@ -46,8 +47,8 @@ def diffuse_job(
         history = {}
         x_current = torch.randn(dim, args.n_samples)
         history[args.T] = x_current.T.clone().numpy()
-        for step in tqdm(range(args.n_steps), total=args.n_steps, desc=f"[D={dim}] SDE"):
-            t = round(times[step] - dt, 10)
+        for step in tqdm(range(args.n_steps), total=args.n_steps, desc=f"[D={dim}] SDE", ncols=100):
+            t = times[step]
             x_current, _ = backward(
                 x_t=x_current,
                 t=t,
