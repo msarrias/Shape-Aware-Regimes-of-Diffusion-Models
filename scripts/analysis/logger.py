@@ -59,6 +59,7 @@ def parse_args() -> argparse.Namespace:
             "log_scale_and_shift"
         ],
     )
+    parser.add_argument("--embedded_gaussian_m", type=int, default=10)
     parser.add_argument("--laplacian", type=str, default="unnormalized")
     parser.add_argument("--distance", type=str, default="SAGD", choices=["SAGD", "SGD"])
 
