@@ -14,10 +14,11 @@ from lib.utils import (
     sasne_job, diffuse_job, flatten_mnist_history,
     get_snap_times, theoretical_bimodal_gaussian_ts, latent_dim
 )
+from lib.ou_model import bimodal_score, embedded_score_canonical
 
 SCORES = {
     "bimodal_gaussian": bimodal_score,
-    "embedded_gaussian": embedded_score_canonical,
+    "embedded_bimodal_gaussian": embedded_score_canonical,
 }
 
 
@@ -93,7 +94,7 @@ def run_mnist(exp_path: Path, args: argparse.Namespace, logger: logging.Logger) 
 def run_synthetic(exp_path: Path, args: argparse.Namespace, logger: logging.Logger) -> None:
     if args.data_model not in SCORES:
         raise NotImplementedError(f"Unknown data model: {args.data_model}")
-    m_embed = args.embedded_gaussian_m if args.data_model == "embedded_gaussian" else None
+    m_embed = args.embedded_gaussian_m if args.data_model == "embedded_bimodal_gaussian" else None
 
     dt = args.T / args.n_steps
     times = np.linspace(args.T, dt, args.n_steps).tolist()
@@ -107,7 +108,7 @@ def run_synthetic(exp_path: Path, args: argparse.Namespace, logger: logging.Logg
         mu_star = torch.full((m,), args.mu)  # latent mean, shape (m,)
         std = 1.0
         t_s, _ = theoretical_bimodal_gaussian_ts(mu_star, std, times)
-        tag = f"m{m}_" if args.data_model == "embedded_gaussian" else ""
+        tag = f"m{m}_" if args.data_model == "embedded_bimodal_gaussian" else ""
         path = exp_path / f"{args.data_model}_{tag}D{d}_N{args.n_samples}_T{int(args.T)}"
         path.mkdir(parents=True, exist_ok=True)
 
@@ -120,6 +121,7 @@ def run_synthetic(exp_path: Path, args: argparse.Namespace, logger: logging.Logg
             snap_time_indices=snap_time_indices,
             score_data_model=SCORES[args.data_model],
             mu_star=mu_star,
+            m=m,
             std=std,
             ts_theoretical=t_s,
             logger=logger,
