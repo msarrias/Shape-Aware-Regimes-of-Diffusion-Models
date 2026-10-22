@@ -5,17 +5,19 @@ import torch
 from pathlib import Path
 from tqdm import tqdm
 
-from lib.ou_model import backward, bimodal_score
+from lib.ou_model import backward, bimodal_score, embedded_score, embedded_score_canonical
 from lib.stats import normalize
 from scipy.stats import wasserstein_distance
 from lib.utils import (
     theoretical_bimodal_gaussian_ts,
-    centers,
     knn_job,
     ctd_job,
     fetch_pairs,
     get_snap_times
 )
+
+from scripts.lib.ou_model import bimodal_score
+
 
 def main(
         dims,
@@ -30,6 +32,7 @@ def main(
         snap_time_indices,
         threads,
         laplacian,
+        model_score,
         clip_perc,
         log_transform,
         clipping,
@@ -55,7 +58,7 @@ def main(
                     dt=dt,
                     mu_star=mu_star,
                     std=std,
-                    model_score=bimodal_score,
+                    model_score=model_score,
                 )
                 if step in snap_time_indices:
                     history[t] = x_current.T.clone().numpy()
@@ -152,7 +155,7 @@ def main(
 if __name__ == "__main__":
     sys.setrecursionlimit(10000)
     normalization = ["shift_center", "mean", "volume"]
-    exp_path = Path("/extra/shared/groups/marinaivan/data_marina/recurrence_matrices/bimodal_gaussians")
+    exp_path = Path("/extra/shared/groups/marinaivan/data_marina/recurrence_matrices/embedded_bimodal_gaussians")
     ds = [2,50,256,1024,16384]
     mu = 4
     n_samples_list = [1000]#, 3000, 6000, 10000]
@@ -161,7 +164,8 @@ if __name__ == "__main__":
     threads = 20
     laplacian = "unnormalized"
     kernel = "gaussian"
-    data_model = 'bimodal_gaussian'
+    data_model = 'embedded_bimodal_gaussian'
+    model_score = embedded_score_canonical if data_model == 'embedded_bimodal_gaussian' else bimodal_score
     norm = ['norm_wrt_median_ctd'] #'scale_and_shift', 'norm_wrt_avg_ctd',
     clip_perc = 95
     dt = T / n_steps
@@ -181,6 +185,7 @@ if __name__ == "__main__":
             snap_time_indices=snap_time_indices,
             threads=threads,
             laplacian=laplacian,
+            model_score=model_score,
             clip_perc=95,
             log_transform=[True, False],
             clipping=[True, False],
