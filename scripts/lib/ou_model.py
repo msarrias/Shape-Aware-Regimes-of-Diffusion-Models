@@ -26,7 +26,7 @@ def backward(x_t, t, dt, mu_star, std, model, weights=None, epsilon=None):
     Which is discretized as:
     x_{t-dt} = x_t + [x_t + 2 * Score(x_t, t)] * dt + sqrt(2 * dt) * epsilon
     """
-    if epsilon is None:                                # For reproducibility
+    if epsilon is None:
         epsilon = torch.randn_like(x_t)     # N(0,1)
     s = score(x_t, t, mu_star, std, model, weights)
     s = torch.as_tensor(s, dtype=x_t.dtype, device=x_t.device)
@@ -36,23 +36,80 @@ def backward(x_t, t, dt, mu_star, std, model, weights=None, epsilon=None):
     return x_tm1, epsilon
 
 
-def centers(d, mu_micro, mu_macro, n_inner=3):
-    angles = np.array([2 * np.pi * k / n_inner for k in range(n_inner)])
+def bimodal_score(x_t, t, mu_star, std):
+    """Bimodal model in R^d.  x_t: (d, N), mu_star: (d,)."""
+    alpha = np.exp(-t)
+    sigma2_t = alpha ** 2 * std ** 2 + (1 - alpha ** 2)
+    mu_t = alpha * mu_star  # (d,)
+    term1 = -x_t / sigma2_t
+    term2 = torch.tanh(mu_t @ x_t / sigma2_t)[None, :] * mu_t[:, None] / sigma2_t
+    return term1 + term2
 
-    scale = np.sqrt(d)  # scale separation with sqrt(d)
 
-    micro_offsets = np.zeros((n_inner, d))
-    micro_offsets[:, 0] = mu_micro * np.cos(angles) * scale
-    micro_offsets[:, 1] = mu_micro * np.sin(angles) * scale
+def embedded_score(x_t, t, mu, std, Q):
+    """Embedded bimodal model.
+    x_t : (d, N) noisy samples, columns are samples
+    t   : float, time
+    mu  : (m,) mode center in the latent space R^m
+    std : float, within-mode std sigma
+    Q   : (d, m) embedding with orthonormal columns (Q^T Q = I_m)
+    """
+    alpha = np.exp(-t)
+    sigma2_t = alpha ** 2 * std ** 2 + (1 - alpha ** 2)  # in-subspace variance
+    h_t = 1 - alpha ** 2  # off-subspace variance
 
-    macro_offset = np.zeros(d)
-    macro_offset[-1] = mu_macro * scale
+    z_t = Q.T @ x_t  # (m, N) latent coordinates
+    Px = Q @ z_t  # (d, N) projection P x
+    mu_emb = alpha * (Q @ mu)  # (d,)  alpha_t Q mu
 
-    mu = np.concatenate([
-        micro_offsets - macro_offset,
-        micro_offsets + macro_offset
-    ], axis=0)
-    return mu
+    term1a = -Px / sigma2_t  # pull on the subspace part
+    term1b = -(x_t - Px) / h_t  # pull on the padding part
+    w = torch.tanh(alpha * (mu @ z_t) / sigma2_t)  # (N,) E[c | x_t]
+    term2 = w[None, :] * mu_emb[:, None] / sigma2_t  # pull toward the mode
+    return term1a + term1b + term2
+
+
+def embedded_score_canonical(x_t, t, mu, std):
+    """Same score for Q = [I_m; 0]: first m coordinates are z_t, the rest n_t."""
+    m = mu.shape[0]
+    alpha = np.exp(-t)
+    h_t = 1 - alpha ** 2
+    z_t, n_t = x_t[:m], x_t[m:]
+    return torch.cat([bimodal_score(z_t, t, mu, std), -n_t / h_t], dim=0)
+
+
+def canonical_Q(d, m):
+    return torch.cat([torch.eye(m), torch.zeros(d - m, m)], dim=0)
+
+
+def random_Q(d, m, seed=0):
+    g = torch.Generator().manual_seed(seed)
+    Q, R = torch.linalg.qr(torch.randn(d, m, generator=g, dtype=torch.float64))
+    return Q * torch.sign(torch.diagonal(R))
+
+
+def theoretical_bimodal_gaussian_ts(mu_star, std, times):
+    """
+    computes the theoretical speciation time t_s proposed by Biroli et. al,
+    and finds its index in the time array.
+    :param mu_star: The cluster center vector.
+    :param std: The standard deviation (internal variance) of the clusters.
+    :param times: The array of time steps used in the simulation.
+    """
+    if torch.is_tensor(mu_star):
+        mu_star_np = mu_star.detach().cpu().numpy()
+    else:
+        mu_star_np = mu_star
+    # Total variance of the mixture at t=0
+    # Lambda = ||mu||^2 + sigma^2
+    norm_sq = np.linalg.norm(mu_star_np)**2
+    Lambda = norm_sq + (std**2)
+    # t_s = 1/2 * ln(Lambda)
+    # This is the point where the Hessian of the log-density crosses zero
+    t_s = np.log(Lambda) / 2.0
+    t_s_idx = np.abs(times - t_s).argmin()
+    
+    return t_s, t_s_idx
 
 
 def find_third_phase_onset(
@@ -83,53 +140,6 @@ def find_third_phase_onset(
     return t_cross
 
 
-def score(x_t, t, mu_star, std, model='bimodal_gaussian', weights=None):
-    """
-    Score function for two models, both working in arbitrary dimension d.
-    x_t   : (d, N) tensor
-    t     : float
-    mu_star:
-        bimodal      — (d,) tensor, the single mean
-        hierarchical_gaussian — (K, d) array, the K cluster means
-    std   :
-        bimodal      — scalar tensor
-        hierarchical_gaussian — (K,) array, per-cluster std
-    weights:
-        hierarchical_gaussian — optional (K,) array of mixture weights; if None,
-                       uniform weights are used
-    """
-
-    if model == 'bimodal_gaussian':
-        ns = x_t.shape[1]
-        delta_t = 1 - np.exp(-2*t)
-        Gamma_t = delta_t + std**2 * np.exp(-2*t)
-        mu_t = mu_star * np.exp(-t)
-        m = torch.matmul(mu_t, x_t)
-        mu_t = mu_t.repeat(ns).reshape(-1, ns)
-        return torch.tanh(m / Gamma_t) * mu_t / Gamma_t - x_t / Gamma_t
-
-    elif model == 'hierarchical_gaussian':
-        X = x_t.T.detach().cpu().numpy() if isinstance(x_t, torch.Tensor) else x_t.T  # (N, d)
-        d = X.shape[1]
-        sigmas  = np.array(std)
-        mu_t = mu_star * np.exp(-t)           # (K, d)
-        Delta_t = 1 - np.exp(-2*t) + sigmas**2 * np.exp(-2*t)
-        Delta_t = np.clip(Delta_t, 1e-8, None)  # (K,)
-        if weights is None:
-            weights = np.ones(len(mu_star)) / len(mu_star)
-        diff = X[:, None, :] - mu_t[None, :, :]           # (N, K, d)
-        # divide by d to prevent softmax collapse in high dimensions
-        log_weights = np.log(weights)[None, :] - 0.5 * np.sum(diff**2, axis=2) / (Delta_t[None, :] * d)
-
-        post = softmax(log_weights, axis=1)                # (N, K)
-        x_hat = np.einsum('nk,kd->nd', post, mu_t)         # (N, d)
-        Delta_t_avg = np.einsum('nk,k->n',   post, Delta_t)      # (N,)
-        s_np = -(X - x_hat) / Delta_t_avg[:, None]        # (N, d)
-        return s_np.T                                             # (d, N)
-    else:
-        raise ValueError('Unknown model: {}'.format(model))
-
-
 def classify(x, mu_star):
     """
     Predicts which of the classes a particle belongs to.
@@ -137,58 +147,8 @@ def classify(x, mu_star):
     """
     # m = np.dot(mu_star, x)
     # return np.sign(m)
-    m = torch.matmul(mu_star, x) 
+    m = torch.matmul(mu_star, x)
     return torch.sign(m)
-
-
-def classify_hierarchical(X, mu_star):
-    """
-    X       : (N, d)
-    mu_star : (K, d) cluster centers
-    Returns : (N,) integer labels 0..K-1
-    """
-    # (N, 1, d) - (1, K, d) -> (N, K, d)
-    diff   = X[:, None, :] - mu_star[None, :, :]   # (N, K, d)
-    dists  = np.linalg.norm(diff, axis=2)           # (N, K)
-    labels = dists.argmin(axis=1)                   # (N,)
-    return labels
-
-
-def theoretical_bimodal_gaussian_ts(mu_star, std, times):
-    """
-    computes the theoretical speciation time t_s and finds its index in the time array.
-    :param mu_star: The cluster center vector.
-    :param std: The standard deviation (internal variance) of the clusters.
-    :param times: The array of time steps used in the simulation.
-    """
-    if torch.is_tensor(mu_star):
-        mu_star_np = mu_star.detach().cpu().numpy()
-    else:
-        mu_star_np = mu_star
-    # Total variance of the mixture at t=0
-    # Lambda = ||mu||^2 + sigma^2
-    norm_sq = np.linalg.norm(mu_star_np)**2
-    Lambda = norm_sq + (std**2)
-    # t_s = 1/2 * ln(Lambda)
-    # This is the point where the Hessian of the log-density crosses zero
-    t_s = np.log(Lambda) / 2.0
-    t_s_idx = np.abs(times - t_s).argmin()
-    
-    return t_s, t_s_idx
-
-
-@nb.njit(error_model="numpy",fastmath=True)
-def gaussian(m, s, x):
-    return 1/np.sqrt(2*np.pi*s) * np.exp(-(x-m)**2 / 2 / s)
-
-@nb.njit(error_model="numpy",fastmath=True)
-def integrand(m, s, t, x):
-    dt = 1 - np.exp(-2*t)
-    gt = dt+s*np.exp(-2*t)
-    Gp = gaussian(m*np.exp(-t), gt, x)
-    Gm = gaussian(-m*np.exp(-t), gt, x)
-    itgrd = (Gp**2+Gm**2) / (Gp + Gm)
-    return itgrd
 
 
 def same_cluster_prob(dim, mu, std, times):
@@ -229,3 +189,17 @@ def pos_cluster_prob(y, t, dim, mu, std):
     y_m = torch.matmul(mu_vec, y)
     x = 2 * np.exp(-t) / Gamma_t * y_m
     return 1 / (1 + np.exp(-x))
+
+
+@nb.njit(error_model="numpy",fastmath=True)
+def gaussian(m, s, x):
+    return 1/np.sqrt(2*np.pi*s) * np.exp(-(x-m)**2 / 2 / s)
+
+@nb.njit(error_model="numpy",fastmath=True)
+def integrand(m, s, t, x):
+    dt = 1 - np.exp(-2*t)
+    gt = dt+s*np.exp(-2*t)
+    Gp = gaussian(m*np.exp(-t), gt, x)
+    Gm = gaussian(-m*np.exp(-t), gt, x)
+    itgrd = (Gp**2+Gm**2) / (Gp + Gm)
+    return itgrd
