@@ -43,4 +43,7 @@ def normalize(
     elif norm_type == "norm_wrt_avg_ctd":
         return arr / np.mean(arr)
 
+    elif norm_type == "norm_wrt_median_ctd":
+        return arr / np.median(arr)
+
     raise ValueError("Unsupported norm_type")
