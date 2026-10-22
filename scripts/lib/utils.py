@@ -36,40 +36,40 @@ def diffuse_job(
     times: list,
     dt: float,
     snap_time_indices: list,
+    score_data_model: callable,
     mu_star: float,
     std: float,
     ts_theoretical: float | None,
     logger: logging.Logger,
 ) -> dict:
-    weights = fetch_weights(args=args)
     if not history_file.exists():
         history = {}
         x_current = torch.randn(dim, args.n_samples)
         history[args.T] = x_current.T.clone().numpy()
-        score_data_model = embedded_score_canonical if args.data_model == "embedded_bimodal_gaussian" else bimodal_score
         for step in tqdm(range(args.n_steps), total=args.n_steps, desc=f"[D={dim}] SDE"):
-            t = times[step]
+            t = round(times[step] - dt, 10)
             x_current, _ = backward(
                 x_t=x_current,
                 t=t,
                 dt=dt,
                 mu_star=mu_star,
                 std=std,
-                model_score=score_data_model,
-                weights=weights,
+                model_score=score_data_model
             )
             if step in snap_time_indices:
                 history[t] = x_current.T.clone().numpy()
         data_to_dump = {
             "history": history,
             "params": {
-                **vars(args),
-                "dim": dim,
-                "times_snapshots": list(history.keys()),
-                "times": times,
-            },
+            **vars(args),
+            "dim": dim,
+            "m": m,
+            "times_snapshots": list(history.keys()),
+            "times": times,
+            "ts_theoretical": ts_theoretical,
+        },
         }
-        if args.data_model == "bimodal_gaussian":
+        if "bimodal_gaussian" in args.data_model:
             data_to_dump["params"]["ts_theoretical"] = ts_theoretical
         joblib.dump(data_to_dump, history_file, compress=3)
     else:
@@ -242,31 +242,28 @@ def sasne_job(
                 sasne_file_path, compress=3
             )
 
-def fetch_weights(args: argparse.Namespace) -> np.ndarray | None:
-    if args.data_model == "hierarchical_gaussian" and args.hierarchical_weights:
-        return args.hierarchical_clusters_size / np.sum(args.hierarchical_clusters_size)
-    return None
+
+def latent_dim(data_model: str, d: int, m: int | None) -> int:
+    """Number of coordinates that carry the data."""
+    return d if data_model == "bimodal_gaussian" else m
 
 
-def get_snap_times(data_model:str, mu:float, times: list, ds: list) -> list:
-    if data_model == "bimodal_gaussian":
-        assert all(times[i] > times[i + 1] for i in range(len(times) - 1)), (
-            "`times` must be strictly descending (t=T -> t=0). "
-        )
-        ts_indices = []
-        for d in ds:
-            mu_star = torch.ones(d) * mu
-            _, ts_idx = theoretical_bimodal_gaussian_ts(mu_star, 1.0, times)
-            ts_indices.append(ts_idx)
-        min_ts_idx = min(ts_indices)
-        coarse = list(range(0, min_ts_idx, 10))
-        dense = list(range(min_ts_idx, len(times), 3))
-        return [int(i) for i in sorted(set(coarse + dense + ts_indices + [len(times) - 1]), reverse=True)]
-    else:
-        return sorted(
-            set(list(range(0, len(times), 10)) + [len(times) - 1]),
-            reverse=True,
-        )
+def get_snap_times(data_model: str, mu: float, times: list, ds: list, m: int | None = None) -> list:
+    assert all(times[i] > times[i + 1] for i in range(len(times) - 1)), (
+        "`times` must be strictly descending (t=T -> t=0)."
+    )
+    last = len(times) - 1
+    if data_model not in ("bimodal_gaussian", "embedded_gaussian"):
+        return sorted(set(range(0, len(times), 10)) | {last}, reverse=True)
+
+    ts_indices = sorted({
+        theoretical_bimodal_gaussian_ts(torch.full((latent_dim(data_model, d, m),), mu), 1.0, times)[1]
+        for d in ds
+    })
+    min_ts_idx = ts_indices[0]
+    coarse = range(0, min_ts_idx, 10)
+    dense = range(min_ts_idx, len(times), 3)
+    return sorted({int(i) for i in (*coarse, *dense, *ts_indices, last)}, reverse=True)
 
 
 def flatten_mnist_history(history: dict) -> dict:
