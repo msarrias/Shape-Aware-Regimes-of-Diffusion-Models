@@ -14,7 +14,7 @@ from typing import Any
 
 from lib.adaptive_knn import AdaptiveKNNGraph
 from lib.clustering import cluster_distance_matrix
-from lib.ou_model import backward, theoretical_bimodal_gaussian_ts, centers
+from lib.ou_model import backward, theoretical_bimodal_gaussian_ts, embedded_score_canonical, bimodal_score
 from lib.sgd import compute_sgd, eigen_decompose_job
 from lib.stats import normalize, compress_equal_frequency
 from lib.distances import ctd_matrix
@@ -46,7 +46,7 @@ def diffuse_job(
         history = {}
         x_current = torch.randn(dim, args.n_samples)
         history[args.T] = x_current.T.clone().numpy()
-
+        score_data_model = embedded_score_canonical if args.data_model == "embedded_bimodal_gaussian" else bimodal_score
         for step in tqdm(range(args.n_steps), total=args.n_steps, desc=f"[D={dim}] SDE"):
             t = times[step]
             x_current, _ = backward(
@@ -55,7 +55,7 @@ def diffuse_job(
                 dt=dt,
                 mu_star=mu_star,
                 std=std,
-                model=args.data_model,
+                model_score=score_data_model,
                 weights=weights,
             )
             if step in snap_time_indices:
