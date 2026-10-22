@@ -12,7 +12,7 @@ from lib.utils import (
     construct_graph_job,
     ctds_job, sagd_job, sgd_matrix_job, clustering_job,
     sasne_job, diffuse_job, flatten_mnist_history,
-    get_snap_times, theoretical_bimodal_gaussian_ts, centers
+    get_snap_times, theoretical_bimodal_gaussian_ts
 )
 
 def run_pipeline(
@@ -89,19 +89,12 @@ def run_synthetic(exp_path: Path, args: argparse.Namespace, logger: logging.Logg
     times = np.linspace(args.T, dt, args.n_steps).tolist()
     snap_time_indices = get_snap_times(data_model=args.data_model, mu=args.mu, times=times, ds=args.ds)
 
-    if args.data_model == "hierarchical_gaussian":
-        assert args.n_samples == sum(args.hierarchical_clusters_size)
-
     for d in args.ds:
         logger.info(f"Running diffusion for D={d}")
-        if args.data_model == "bimodal_gaussian":
+        if args.data_model in ["bimodal_gaussian", "embedded_bimodal_gaussian"]:
             mu_star = torch.ones(d) * args.mu
             std = 1.0
             t_s, _ = theoretical_bimodal_gaussian_ts(mu_star, std, times)
-        elif args.data_model == "hierarchical_gaussian":
-            mu_star = centers(d=d, mu_macro=args.mu_macro, mu_micro=args.mu_micro)
-            std = args.hierarchical_sigma
-            t_s = None
         else:
             raise NotImplementedError(f"Unknown data model: {args.data_model}")
 
