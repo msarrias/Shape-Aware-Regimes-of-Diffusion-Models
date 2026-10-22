@@ -12,8 +12,14 @@ from lib.utils import (
     construct_graph_job,
     ctds_job, sagd_job, sgd_matrix_job, clustering_job,
     sasne_job, diffuse_job, flatten_mnist_history,
-    get_snap_times, theoretical_bimodal_gaussian_ts
+    get_snap_times, theoretical_bimodal_gaussian_ts, latent_dim
 )
+
+SCORES = {
+    "bimodal_gaussian": bimodal_score,
+    "embedded_gaussian": embedded_score_canonical,
+}
+
 
 def run_pipeline(
     path: Path,
@@ -85,20 +91,24 @@ def run_mnist(exp_path: Path, args: argparse.Namespace, logger: logging.Logger) 
         run_pipeline(path=subdir, history=history, args=args, logger=logger)    
 
 def run_synthetic(exp_path: Path, args: argparse.Namespace, logger: logging.Logger) -> None:
+    if args.data_model not in SCORES:
+        raise NotImplementedError(f"Unknown data model: {args.data_model}")
+    m_embed = args.embedded_gaussian_m if args.data_model == "embedded_gaussian" else None
+
     dt = args.T / args.n_steps
     times = np.linspace(args.T, dt, args.n_steps).tolist()
-    snap_time_indices = get_snap_times(data_model=args.data_model, mu=args.mu, times=times, ds=args.ds)
+    snap_time_indices = get_snap_times(args.data_model, args.mu, times, args.ds, m=m_embed)
 
     for d in args.ds:
         logger.info(f"Running diffusion for D={d}")
-        if args.data_model in ["bimodal_gaussian", "embedded_bimodal_gaussian"]:
-            mu_star = torch.ones(d) * args.mu
-            std = 1.0
-            t_s, _ = theoretical_bimodal_gaussian_ts(mu_star, std, times)
-        else:
-            raise NotImplementedError(f"Unknown data model: {args.data_model}")
-
-        path = exp_path / f"D{d}_N{args.n_samples}_T{int(args.T)}"
+        m = latent_dim(args.data_model, d, m_embed)
+        if m > d:
+            raise ValueError(f"D={d} must be >= m={m} for the embedded model")
+        mu_star = torch.full((m,), args.mu)  # latent mean, shape (m,)
+        std = 1.0
+        t_s, _ = theoretical_bimodal_gaussian_ts(mu_star, std, times)
+        tag = f"m{m}_" if args.data_model == "embedded_gaussian" else ""
+        path = exp_path / f"{args.data_model}_{tag}D{d}_N{args.n_samples}_T{int(args.T)}"
         path.mkdir(parents=True, exist_ok=True)
 
         history = diffuse_job(
@@ -108,6 +118,7 @@ def run_synthetic(exp_path: Path, args: argparse.Namespace, logger: logging.Logg
             times=times,
             dt=dt,
             snap_time_indices=snap_time_indices,
+            score_data_model=SCORES[args.data_model],
             mu_star=mu_star,
             std=std,
             ts_theoretical=t_s,
@@ -132,7 +143,6 @@ def main() -> None:
         run_synthetic(exp_path, args, logger)
 
     logger.info("Done!")
-
 
 if __name__ == "__main__":
     main()
