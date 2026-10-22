@@ -5,14 +5,6 @@ from pathlib import Path
 
 
 def setup_logging(exp_path: Path, args) -> logging.Logger:
-    HIERARCHICAL_PARAMS = {
-        "hierarchical_weights",
-        "hierarchical_sigma",
-        "hierarchical_clusters_size",
-        "mu_macro",
-        "mu_micro",
-    }
-
     log_file = exp_path / "settings.log"
     logging.basicConfig(
         level=logging.INFO,
@@ -25,8 +17,6 @@ def setup_logging(exp_path: Path, args) -> logging.Logger:
     logger = logging.getLogger()
     logger.info("=== Simulation Settings ===")
     for arg, value in vars(args).items():
-        if args.data_model != "hierarchical_gaussian" and arg in HIERARCHICAL_PARAMS:
-            continue
         logger.info(f"{arg}: {value}")
     logger.info("===========================\n")
     return logger
@@ -55,15 +45,16 @@ def parse_args() -> argparse.Namespace:
         "--data_model",
         type=str,
         default="bimodal_gaussian",
-        choices=["bimodal_gaussian", "hierarchical_gaussian", "mnist_unet_diffusion"],
+        choices=["bimodal_gaussian", "embedded_bimodal_gaussian", "mnist_unet_diffusion"],
     )
     parser.add_argument(
         "--norm_type",
         type=str,
-        default="norm_wrt_volume",
+        default="norm_wrt_median_ctd",
         choices=[
             "norm_wrt_volume",
             "norm_wrt_avg_ctd",
+            "norm_wrt_median_ctd",
             "scale_and_shift",
             "log_scale_and_shift"
         ],
@@ -77,21 +68,4 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--keep_raw_ctds", action="store_true", default=False)
     parser.add_argument("--generate_sasne_embedding", action="store_true", default=False)
     parser.add_argument("--sasne_dimension", type=int, default=2)
-
-    parser.add_argument("--hierarchical_weights", action="store_true", default=False)
-    parser.add_argument(
-        "--hierarchical_sigma",
-        type=float,
-        nargs="+",
-        default=[1, 1, 1, 1, 1, 1]
-    )
-    parser.add_argument(
-        "--hierarchical_clusters_size",
-        type=int,
-        nargs="+",
-        default=[400, 200, 100, 300, 150, 350]
-    )
-    parser.add_argument("--mu_macro", type=float, default=8)
-    parser.add_argument("--mu_micro", type=float, default=4)
-
     return parser.parse_args()
